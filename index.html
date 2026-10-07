@@ -5,16 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>音乐播放器</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=20261007m">
+<link rel="stylesheet" href="css/style.css?v=20261007n">
 </head>
 <body>
-
-<!-- 环境光背景 -->
-<div id="ambient" aria-hidden="true">
-  <div id="ambient-img"></div>
-  <div id="ambient-glow"></div>
-  <div id="ambient-dim"></div>
-</div>
 
 <div class="app">
   <aside id="sidebar">
@@ -82,7 +75,10 @@
 <!-- 底部播放条 -->
 <footer id="player-bar">
   <div class="pb-left">
-    <div class="pb-tile" id="pb-tile">♪</div>
+    <div class="pb-tile-wrap">
+      <div class="pb-glow" id="pb-glow"></div>
+      <div class="pb-tile" id="pb-tile">♪</div>
+    </div>
     <div class="pb-meta">
       <div id="pb-title" class="pb-title">还没有播放歌曲</div>
       <div id="pb-artist" class="pb-artist">搜一首歌或点开榜单开始吧</div>
@@ -130,6 +126,6 @@
 <div id="toast" class="toast" hidden></div>
 
 <audio id="audio" preload="auto"></audio>
-<script src="js/app.js?v=20261007m"></script>
+<script src="js/app.js?v=20261007n"></script>
 </body>
 </html>
