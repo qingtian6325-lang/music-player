@@ -5,51 +5,57 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>音乐播放器</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=20261007d">
+<link rel="stylesheet" href="css/style.css?v=20261007f">
 </head>
 <body>
 
-<aside id="sidebar">
-  <div class="logo" id="logo-home"><span class="logo-icon" id="logo-icon"></span>音乐播放器</div>
-  <div class="search-box">
-    <input id="search-input" type="text" placeholder="搜索歌曲 / 歌手 / 专辑…" autocomplete="off">
-    <div class="search-row">
-      <select id="source-select" title="音乐源">
-        <option value="netease" selected>网易云</option>
-        <option value="joox">JOOX</option>
-        <option value="bilibili">B站</option>
-      </select>
-      <button id="search-btn">搜索</button>
-    </div>
-  </div>
-  <nav class="side-nav">
-    <button id="nav-home" class="active"><span class="nav-ic" id="nav-home-ic"></span>首页</button>
-    <button id="nav-fav"><span class="nav-ic" id="nav-fav-ic"></span>收藏</button>
-    <button id="theme-btn"><span class="nav-ic" id="theme-ic"></span><span id="theme-label">浅色模式</span></button>
-    <button id="settings-btn"><span class="nav-ic" id="settings-ic"></span>设置</button>
-  </nav>
-  <div class="side-label">榜单</div>
-  <div id="side-charts"></div>
-</aside>
-
-<div class="content">
-  <main id="main">
-    <section id="view-home">
-      <h2 class="section-title">热门榜单</h2>
-      <div id="chart-grid" class="chart-list"></div>
-    </section>
-
-    <section id="view-list" hidden>
-      <div class="list-header">
-        <button id="back-home" class="ghost-btn"><span class="btn-ic" id="back-ic"></span>返回</button>
-        <h2 id="list-title" class="section-title"></h2>
+<div class="app">
+  <aside id="sidebar">
+    <div class="side-card">
+      <div class="logo" id="logo-home"><span class="logo-icon" id="logo-icon"></span>音乐播放器</div>
+      <div class="search-box">
+        <input id="search-input" type="text" placeholder="搜索歌曲 / 歌手 / 专辑…" autocomplete="off">
+        <div class="search-row">
+          <select id="source-select" title="音乐源">
+            <option value="netease" selected>网易云</option>
+            <option value="joox">JOOX</option>
+            <option value="bilibili">B站</option>
+          </select>
+          <button id="search-btn">搜索</button>
+        </div>
       </div>
-      <div id="track-list" class="track-list"></div>
-      <div id="list-loading" class="loading" hidden>加载中…</div>
-      <div id="list-empty" class="empty" hidden>没有找到相关歌曲，换个关键词试试</div>
-    </section>
-  </main>
-  <div id="api-credit">音乐数据接口：GD音乐台 (music.gdstudio.xyz) · CC BY-NC 4.0 · 本站仅供学习交流，请勿商用</div>
+      <nav class="side-nav">
+        <button id="nav-home" class="active"><span class="nav-ic" id="nav-home-ic"></span>首页</button>
+        <button id="nav-fav"><span class="nav-ic" id="nav-fav-ic"></span>收藏</button>
+        <button id="theme-btn"><span class="nav-ic" id="theme-ic"></span><span id="theme-label">浅色模式</span></button>
+        <button id="settings-btn"><span class="nav-ic" id="settings-ic"></span>设置</button>
+      </nav>
+    </div>
+    <div class="side-card lib-card">
+      <div class="side-label">榜单</div>
+      <div id="side-charts"></div>
+    </div>
+  </aside>
+
+  <div class="content">
+    <main id="main">
+      <section id="view-home">
+        <h2 class="section-title">热门榜单</h2>
+        <div id="chart-grid" class="chart-grid"></div>
+      </section>
+
+      <section id="view-list" hidden>
+        <div class="list-header">
+          <button id="back-home" class="ghost-btn"><span class="btn-ic" id="back-ic"></span>返回</button>
+          <h2 id="list-title" class="section-title"></h2>
+        </div>
+        <div id="track-list" class="track-list"></div>
+        <div id="list-loading" class="loading" hidden>加载中…</div>
+        <div id="list-empty" class="empty" hidden>没有找到相关歌曲，换个关键词试试</div>
+      </section>
+    </main>
+    <div id="api-credit">音乐数据接口：GD音乐台 (music.gdstudio.xyz) · CC BY-NC 4.0 · 本站仅供学习交流，请勿商用</div>
+  </div>
 </div>
 
 <!-- 歌词面板 -->
@@ -69,6 +75,7 @@
 <!-- 底部播放条 -->
 <footer id="player-bar">
   <div class="pb-left">
+    <div class="pb-tile" id="pb-tile">♪</div>
     <div class="pb-meta">
       <div id="pb-title" class="pb-title">还没有播放歌曲</div>
       <div id="pb-artist" class="pb-artist">搜一首歌或点开榜单开始吧</div>
@@ -77,20 +84,20 @@
   </div>
   <div class="pb-center">
     <div class="pb-controls">
-      <button id="mode-btn" class="icon-btn" title="播放模式：顺序" aria-label="播放模式"></button>
-      <button id="prev-btn" class="icon-btn" title="上一首" aria-label="上一首"></button>
-      <button id="play-btn" class="icon-btn big" title="播放/暂停" aria-label="播放暂停"></button>
-      <button id="next-btn" class="icon-btn" title="下一首" aria-label="下一首"></button>
-      <button id="lyrics-btn" class="icon-btn" title="歌词" aria-label="歌词"></button>
+      <button id="mode-btn" class="icon-btn sm" title="播放模式：顺序" aria-label="播放模式"></button>
+      <button id="prev-btn" class="icon-btn sm" title="上一首" aria-label="上一首"></button>
+      <button id="play-btn" class="play-main" title="播放/暂停" aria-label="播放暂停"></button>
+      <button id="next-btn" class="icon-btn sm" title="下一首" aria-label="下一首"></button>
+      <button id="lyrics-btn" class="icon-btn sm" title="歌词" aria-label="歌词"></button>
     </div>
     <div class="pb-progress">
       <span id="time-cur">0:00</span>
       <div id="progress-wrap" class="progress-wrap"><div id="progress-fill" class="progress-fill"></div></div>
       <span id="time-total">0:00</span>
-      <span id="quality-badge" class="quality-badge" hidden></span>
     </div>
   </div>
   <div class="pb-right">
+    <span id="quality-badge" class="quality-badge" hidden></span>
     <span class="vol-icon" id="vol-ic"></span>
     <input id="vol-slider" type="range" min="0" max="100" value="80">
   </div>
@@ -115,6 +122,6 @@
 <div id="toast" class="toast" hidden></div>
 
 <audio id="audio" preload="auto"></audio>
-<script src="js/app.js?v=20261007d"></script>
+<script src="js/app.js?v=20261007f"></script>
 </body>
 </html>

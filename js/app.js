@@ -97,6 +97,10 @@ const ICONS = {
   x: SVG_OPEN + '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>' + SVG_END,
 };
 function setIcon(el, name) { if (el) el.innerHTML = ICONS[name]; }
+function setPlayIcon(playing) {
+  setIcon($('play-btn'), playing ? 'pause' : 'play');
+  $('play-btn').classList.toggle('pausing', playing);
+}
 
 /* ---------- 主题（深色/浅色一键切换） ---------- */
 function applyTheme() {
@@ -204,21 +208,21 @@ async function playTrack(index) {
   qIndex = index;
   markPlayingRow();
   updatePlayerMeta(track, true);
-  setIcon($('play-btn'), 'pause');
+  setPlayIcon(true);
 
   // 解析最高可用音质地址
   const r = await resolveUrl(track.source, track.id);
   if (qIndex !== index) return; // 期间已切歌
   if (!r) {
     toast('这首歌暂无可播放地址，换个音乐源试试');
-    setIcon($('play-btn'), 'play');
+    setPlayIcon(false);
     return;
   }
   audio.src = audioSrc(r.url);
   track._cdnUrl = r.url;          // 直链备份：中转失败时降级用
   audioFallbackTried = false;
   try { await audio.play(); } catch (e) {
-    setIcon($('play-btn'), 'play');
+    setPlayIcon(false);
     toast('浏览器拦截了播放，再点一次播放试试');
     return;
   }
@@ -240,6 +244,7 @@ function qualityName(br) {
 }
 
 function updatePlayerMeta(track, loading) {
+  $('pb-tile').textContent = (track.name || '♪').charAt(0);
   $('pb-title').textContent = track.name;
   $('pb-artist').textContent = track.artist.join(' / ') + (loading ? '（加载中…）' : '');
   $('lyrics-title').textContent = track.name;
@@ -256,8 +261,8 @@ function updateFavBtn() {
 
 function togglePlay() {
   if (!currentTrack()) { toast('先搜一首歌或打开榜单吧'); return; }
-  if (audio.paused) { audio.play(); setIcon($('play-btn'), 'pause'); }
-  else { audio.pause(); setIcon($('play-btn'), 'play'); }
+  if (audio.paused) { audio.play(); setPlayIcon(true); }
+  else { audio.pause(); setPlayIcon(false); }
 }
 
 function nextTrack(auto) {
@@ -287,6 +292,12 @@ function renderTrackList(tracks, title) {
   const box = $('track-list');
   box.innerHTML = '';
   $('list-empty').hidden = tracks.length > 0;
+  if (tracks.length > 0) {
+    const head = document.createElement('div');
+    head.className = 'track-head';
+    head.innerHTML = '<span>#</span><span>标题</span><span class="th-album">专辑</span><span class="th-dur">时长</span><span></span>';
+    box.appendChild(head);
+  }
   tracks.forEach((t, i) => {
     const row = document.createElement('div');
     row.className = 'track-row';
@@ -296,19 +307,23 @@ function renderTrackList(tracks, title) {
       <span class="track-idx">${i + 1}</span>
       <div class="track-main">
         <div class="track-name">${escapeHtml(t.name)}</div>
-        <div class="track-sub">${escapeHtml(t.artist.join(' / '))}${t.album ? ' · ' + escapeHtml(t.album) : ''}</div>
+        <div class="track-sub">${escapeHtml(t.artist.join(' / '))}</div>
       </div>
-      ${t.duration ? `<span class="track-dur">${fmtTime(t.duration)}</span>` : ''}
-      <button class="row-fav" title="收藏">${loved ? ICONS.heartFill : ICONS.heart}</button>`;
+      <span class="track-album">${escapeHtml(t.album || '—')}</span>
+      <span class="track-dur">${t.duration ? fmtTime(t.duration) : '—'}</span>
+      <button class="row-fav${loved ? ' loved' : ''}" title="收藏">${loved ? ICONS.heartFill : ICONS.heart}</button>`;
     row.onclick = (e) => {
-      if (e.target.classList.contains('row-fav')) return;
+      if (e.target.closest('.row-fav')) return;
       setQueue(tracks, i);
       playTrack(i);
     };
-    row.querySelector('.row-fav').onclick = (e) => {
+    const favBtn = row.querySelector('.row-fav');
+    favBtn.onclick = (e) => {
       e.stopPropagation();
       toggleFav(t);
-      setIcon(e.currentTarget, favorites.some((f) => f.id === t.id && f.source === t.source) ? 'heartFill' : 'heart');
+      const nowLoved = favorites.some((f) => f.id === t.id && f.source === t.source);
+      setIcon(favBtn, nowLoved ? 'heartFill' : 'heart');
+      favBtn.classList.toggle('loved', nowLoved);
     };
     box.appendChild(row);
   });
@@ -332,22 +347,19 @@ function toggleFav(t) {
   updateFavBtn();
 }
 
-/* ---------- 首页榜单（无图文字版） ---------- */
+/* ---------- 首页榜单（Spotify 风格卡片，无图） ---------- */
 function renderCharts() {
   const grid = $('chart-grid');
   grid.innerHTML = '';
-  CHARTS.forEach((c, i) => {
-    const row = document.createElement('div');
-    row.className = 'chart-row';
-    row.innerHTML = `
-      <span class="chart-rank">${String(i + 1).padStart(2, '0')}</span>
-      <div>
-        <div class="chart-name">${c.name}</div>
-        <div class="chart-sub">点击查看榜单曲目</div>
-      </div>
-      <span class="chart-go">›</span>`;
-    row.onclick = () => openChart(c);
-    grid.appendChild(row);
+  CHARTS.forEach((c) => {
+    const card = document.createElement('div');
+    card.className = 'chart-card';
+    card.innerHTML = `
+      <div class="chart-tile">${escapeHtml(c.name.charAt(0))}</div>
+      <div class="chart-name">${c.name}</div>
+      <div class="chart-sub">榜单 · 点击查看曲目</div>`;
+    card.onclick = () => openChart(c);
+    grid.appendChild(card);
   });
   const side = $('side-charts');
   side.innerHTML = '';
@@ -474,8 +486,8 @@ audio.addEventListener('timeupdate', () => {
   syncLyric();
 });
 audio.addEventListener('ended', () => nextTrack(true));
-audio.addEventListener('play', () => setIcon($('play-btn'), 'pause'));
-audio.addEventListener('pause', () => setIcon($('play-btn'), 'play'));
+audio.addEventListener('play', () => setPlayIcon(true));
+audio.addEventListener('pause', () => setPlayIcon(false));
 // 中转播不出时，自动降级用直链再试一次
 let audioFallbackTried = false;
 audio.addEventListener('error', () => {
@@ -560,7 +572,7 @@ setIcon($('nav-fav-ic'), 'heart');
 setIcon($('settings-ic'), 'gear');
 setIcon($('back-ic'), 'chevL');
 setIcon($('lyrics-close-ic'), 'x');
-setIcon($('play-btn'), 'play');
+setPlayIcon(false);
 setIcon($('prev-btn'), 'prev');
 setIcon($('next-btn'), 'next');
 setIcon($('mode-btn'), 'repeat');
