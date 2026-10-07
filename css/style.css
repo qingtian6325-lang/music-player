@@ -216,6 +216,45 @@ body.light .chart-card:nth-child(4n+4) .chart-tile { color: #9c36b5; }
 .lyric-line.active .trans { color: var(--accent); opacity: 0.8; }
 .lyrics-empty { color: var(--muted); margin-top: 60px; }
 
+/* ---------- 全屏环境光（仅电脑端，手机关闭） ---------- */
+#ambient {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  opacity: 0; transition: opacity 1.2s; overflow: hidden;
+}
+#ambient.on { opacity: 1; }
+#ambient-img {
+  position: absolute; inset: -6%;
+  background-size: cover; background-position: center;
+  filter: blur(80px) saturate(1.4);
+  opacity: 0.55; transition: opacity 0.8s;
+}
+#ambient-glow {
+  position: absolute; inset: -10%;
+  background-size: cover; background-position: center;
+  filter: blur(60px) saturate(1.8);
+  animation: breathe 2.8s ease-in-out infinite;
+}
+#ambient.paused #ambient-glow { animation-play-state: paused; }
+#ambient-dim {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.72));
+}
+body.light #ambient-dim {
+  background: linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,255,255,.82));
+}
+/* 电脑端：内容浮在环境光之上，面板半透明 */
+@media (min-width: 861px) {
+  .app { position: relative; z-index: 1; }
+  .side-card, #main { background: rgba(18, 18, 18, 0.78); }
+  body.light .side-card, body.light #main { background: rgba(255, 255, 255, 0.8); }
+  #player-bar { background: rgba(0, 0, 0, 0.82); }
+  body.light #player-bar { background: rgba(255, 255, 255, 0.88); }
+}
+/* 手机：关闭环境光，保持基本版 */
+@media (max-width: 860px) {
+  #ambient { display: none; }
+}
+
 /* ---------- 正在播放全屏 ---------- */
 .now-playing {
   position: fixed; inset: 0; z-index: 70;

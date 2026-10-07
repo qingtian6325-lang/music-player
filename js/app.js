@@ -208,6 +208,30 @@ function syncLyric() {
   }
 }
 
+/* ---------- 全屏环境光（仅电脑端） ---------- */
+let ambientToken = 0;
+async function setAmbient(picUrl) {
+  const amb = $('ambient');
+  if (!picUrl || window.innerWidth <= 860) { amb.classList.remove('on'); return; }
+  const my = ++ambientToken;
+  const url = imgSrc(picUrl);
+  const pre = new Image();
+  pre.src = url;
+  await new Promise((res) => { pre.onload = res; pre.onerror = res; });
+  if (my !== ambientToken) return;
+  const cssUrl = `url("${url.replace(/"/g, '')}")`;
+  const bg = $('ambient-img');
+  bg.style.opacity = '0';
+  setTimeout(() => {
+    if (my !== ambientToken) return;
+    bg.style.backgroundImage = cssUrl;
+    $('ambient-glow').style.backgroundImage = cssUrl;
+    bg.style.opacity = '';
+    amb.classList.add('on');
+    amb.classList.toggle('paused', audio.paused);
+  }, 250);
+}
+
 /* ---------- 正在播放全屏 ---------- */
 function syncNowPlaying(track) {
   const pic = track.pic ? imgSrc(track.pic) : '';
@@ -258,6 +282,7 @@ async function playTrack(index) {
   markPlayingRow();
   updatePlayerMeta(track, true);
   setBuffering(true);
+  setAmbient(track.pic);
   if (!$('now-playing').hidden) syncNowPlaying(track);
 
   // 解析最高可用音质地址
@@ -557,8 +582,8 @@ audio.addEventListener('timeupdate', () => {
   syncLyric();
 });
 audio.addEventListener('ended', () => nextTrack(true));
-audio.addEventListener('play', () => { setPlayIcon(true); $('player-bar').classList.remove('paused'); $('now-playing').classList.remove('paused'); });
-audio.addEventListener('pause', () => { setBuffering(false); $('player-bar').classList.add('paused'); $('now-playing').classList.add('paused'); });
+audio.addEventListener('play', () => { setPlayIcon(true); $('player-bar').classList.remove('paused'); $('now-playing').classList.remove('paused'); $('ambient').classList.remove('paused'); });
+audio.addEventListener('pause', () => { setBuffering(false); $('player-bar').classList.add('paused'); $('now-playing').classList.add('paused'); $('ambient').classList.add('paused'); });
 audio.addEventListener('waiting', () => setBuffering(true));
 audio.addEventListener('playing', () => setBuffering(false));
 audio.addEventListener('seeking', () => setBuffering(true));
