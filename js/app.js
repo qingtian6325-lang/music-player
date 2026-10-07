@@ -101,6 +101,15 @@ function setPlayIcon(playing) {
   setIcon($('play-btn'), playing ? 'pause' : 'play');
   $('play-btn').classList.toggle('pausing', playing);
 }
+/* 缓冲中：播放键变转圈 + 显示"缓冲中…" */
+function setBuffering(on) {
+  $('buffer-hint').hidden = !on;
+  if (on) {
+    $('play-btn').innerHTML = '<span class="spinner"></span>';
+  } else {
+    setPlayIcon(!audio.paused);
+  }
+}
 
 /* ---------- 主题（深色/浅色一键切换） ---------- */
 function applyTheme() {
@@ -208,21 +217,21 @@ async function playTrack(index) {
   qIndex = index;
   markPlayingRow();
   updatePlayerMeta(track, true);
-  setPlayIcon(true);
+  setBuffering(true);
 
   // 解析最高可用音质地址
   const r = await resolveUrl(track.source, track.id);
   if (qIndex !== index) return; // 期间已切歌
   if (!r) {
     toast('这首歌暂无可播放地址，换个音乐源试试');
-    setPlayIcon(false);
+    setBuffering(false);
     return;
   }
   audio.src = audioSrc(r.url);
   track._cdnUrl = r.url;          // 直链备份：中转失败时降级用
   audioFallbackTried = false;
   try { await audio.play(); } catch (e) {
-    setPlayIcon(false);
+    setBuffering(false);
     toast('浏览器拦截了播放，再点一次播放试试');
     return;
   }
@@ -492,7 +501,14 @@ audio.addEventListener('timeupdate', () => {
 });
 audio.addEventListener('ended', () => nextTrack(true));
 audio.addEventListener('play', () => setPlayIcon(true));
-audio.addEventListener('pause', () => setPlayIcon(false));
+audio.addEventListener('pause', () => setBuffering(false));
+audio.addEventListener('waiting', () => setBuffering(true));
+audio.addEventListener('playing', () => setBuffering(false));
+audio.addEventListener('seeking', () => setBuffering(true));
+audio.addEventListener('seeked', () => {
+  // 跳到的位置有数据就直接关，没数据就等 waiting/playing 事件来关
+  if (audio.readyState >= 3) setBuffering(false);
+});
 // 中转播不出时，自动降级用直链再试一次
 let audioFallbackTried = false;
 audio.addEventListener('error', () => {

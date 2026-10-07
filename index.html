@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>音乐播放器</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=20261007g">
+<link rel="stylesheet" href="css/style.css?v=20261007h">
 </head>
 <body>
 
@@ -91,6 +91,7 @@
       <button id="lyrics-btn" class="icon-btn sm" title="歌词" aria-label="歌词"></button>
     </div>
     <div class="pb-progress">
+      <span id="buffer-hint" class="buffer-hint" hidden>缓冲中…</span>
       <span id="time-cur">0:00</span>
       <div id="progress-wrap" class="progress-wrap"><div id="progress-fill" class="progress-fill"></div></div>
       <span id="time-total">0:00</span>
@@ -122,6 +123,6 @@
 <div id="toast" class="toast" hidden></div>
 
 <audio id="audio" preload="auto"></audio>
-<script src="js/app.js?v=20261007g"></script>
+<script src="js/app.js?v=20261007h"></script>
 </body>
 </html>
