@@ -31,16 +31,23 @@ function toast(msg, ms = 2600) {
 }
 
 /* ---------- API ---------- */
+const DEFAULT_PROXY = 'https://disablecdnblock.qingtian6325.workers.dev';
 function proxyBase() {
-  return (localStorage.getItem('mp_proxy') || '').replace(/\/$/, '');
+  return (localStorage.getItem('mp_proxy') || DEFAULT_PROXY).replace(/\/$/, '');
+}
+async function fetchJson(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('网络请求失败 ' + res.status);
+  return res.json();
 }
 async function api(params) {
   const q = new URLSearchParams(params).toString();
   const proxy = proxyBase();
-  const url = proxy ? proxy + '/api?' + q : API + '?' + q;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('网络请求失败 ' + res.status);
-  return res.json();
+  if (proxy) {
+    try { return await fetchJson(proxy + '/api?' + q); }
+    catch (e) { /* 中转失败则降级直连 */ }
+  }
+  return fetchJson(API + '?' + q);
 }
 /* 音频地址：设置了中转则走 Worker 流式转发，否则直链 */
 function audioSrc(cdnUrl) {
@@ -189,6 +196,8 @@ async function playTrack(index) {
     return;
   }
   audio.src = audioSrc(r.url);
+  track._cdnUrl = r.url;          // 直链备份：中转失败时降级用
+  audioFallbackTried = false;
   try { await audio.play(); } catch (e) {
     $('play-btn').textContent = '▶';
     toast('浏览器拦截了播放，再点一次 ▶ 试试');
@@ -437,6 +446,18 @@ audio.addEventListener('timeupdate', () => {
 audio.addEventListener('ended', () => nextTrack(true));
 audio.addEventListener('play', () => ($('play-btn').textContent = '⏸'));
 audio.addEventListener('pause', () => ($('play-btn').textContent = '▶'));
+// 中转播不出时，自动降级用直链再试一次
+let audioFallbackTried = false;
+audio.addEventListener('error', () => {
+  const t = currentTrack();
+  const pb = proxyBase();
+  if (t && t._cdnUrl && pb && audio.src.startsWith(pb) && !audioFallbackTried) {
+    audioFallbackTried = true;
+    toast('中转连接不畅，尝试直连…');
+    audio.src = t._cdnUrl;
+    audio.play().catch(() => {});
+  }
+});
 
 $('progress-wrap').onclick = (e) => {
   const r = e.currentTarget.getBoundingClientRect();
@@ -469,13 +490,13 @@ $('proxy-save').onclick = () => {
   const v = $('proxy-input').value.trim().replace(/\/$/, '');
   if (v && !/^https?:\/\//.test(v)) { toast('地址格式不对，要以 http 开头'); return; }
   if (v) localStorage.setItem('mp_proxy', v); else localStorage.removeItem('mp_proxy');
-  $('proxy-status').textContent = v ? '已保存，之后搜歌和播放都走中转。' : '已清除，恢复直连。';
+  $('proxy-status').textContent = v ? '已保存，之后搜歌和播放都走你填的中转。' : '已恢复默认公共中转。';
   toast('设置已保存');
 };
 $('proxy-clear').onclick = () => {
   localStorage.removeItem('mp_proxy');
   $('proxy-input').value = '';
-  $('proxy-status').textContent = '已清除，恢复直连。';
+  $('proxy-status').textContent = '已恢复默认公共中转。';
 };
 $('proxy-test').onclick = async () => {
   const v = $('proxy-input').value.trim().replace(/\/$/, '');
