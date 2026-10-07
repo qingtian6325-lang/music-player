@@ -31,11 +31,21 @@ function toast(msg, ms = 2600) {
 }
 
 /* ---------- API ---------- */
+function proxyBase() {
+  return (localStorage.getItem('mp_proxy') || '').replace(/\/$/, '');
+}
 async function api(params) {
-  const url = API + '?' + new URLSearchParams(params).toString();
+  const q = new URLSearchParams(params).toString();
+  const proxy = proxyBase();
+  const url = proxy ? proxy + '/api?' + q : API + '?' + q;
   const res = await fetch(url);
   if (!res.ok) throw new Error('网络请求失败 ' + res.status);
   return res.json();
+}
+/* 音频地址：设置了中转则走 Worker 流式转发，否则直链 */
+function audioSrc(cdnUrl) {
+  const proxy = proxyBase();
+  return proxy ? proxy + '/audio?src=' + encodeURIComponent(cdnUrl) : cdnUrl;
 }
 const urlCache = new Map();   // source:id -> {url, br}
 const lyricCache = new Map(); // source:id -> {lines:[{t, text, trans}]}
@@ -178,8 +188,12 @@ async function playTrack(index) {
     $('play-btn').textContent = '▶';
     return;
   }
-  audio.src = r.url;
-  try { await audio.play(); } catch (e) { $('play-btn').textContent = '▶'; return; }
+  audio.src = audioSrc(r.url);
+  try { await audio.play(); } catch (e) {
+    $('play-btn').textContent = '▶';
+    toast('浏览器拦截了播放，再点一次 ▶ 试试');
+    return;
+  }
   $('quality-badge').hidden = false;
   $('quality-badge').textContent = qualityName(r.br);
 
@@ -439,6 +453,42 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowRight') nextTrack(false);
   else if (e.key === 'ArrowLeft') prevTrack();
 });
+
+/* ---------- 中转设置 ---------- */
+function openSettings() {
+  $('proxy-input').value = localStorage.getItem('mp_proxy') || '';
+  $('proxy-status').textContent = '';
+  $('settings-modal').hidden = false;
+}
+$('settings-btn').onclick = openSettings;
+$('proxy-close').onclick = () => ($('settings-modal').hidden = true);
+$('settings-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'settings-modal') $('settings-modal').hidden = true;
+});
+$('proxy-save').onclick = () => {
+  const v = $('proxy-input').value.trim().replace(/\/$/, '');
+  if (v && !/^https?:\/\//.test(v)) { toast('地址格式不对，要以 http 开头'); return; }
+  if (v) localStorage.setItem('mp_proxy', v); else localStorage.removeItem('mp_proxy');
+  $('proxy-status').textContent = v ? '已保存，之后搜歌和播放都走中转。' : '已清除，恢复直连。';
+  toast('设置已保存');
+};
+$('proxy-clear').onclick = () => {
+  localStorage.removeItem('mp_proxy');
+  $('proxy-input').value = '';
+  $('proxy-status').textContent = '已清除，恢复直连。';
+};
+$('proxy-test').onclick = async () => {
+  const v = $('proxy-input').value.trim().replace(/\/$/, '');
+  if (!v) { toast('先填 Worker 地址'); return; }
+  $('proxy-status').textContent = '测试中…';
+  try {
+    const r = await fetch(v + '/api?' + new URLSearchParams({ types: 'search', name: 'test', count: '1' }).toString());
+    const d = await r.json();
+    $('proxy-status').textContent = Array.isArray(d) ? '连接正常 ✅，点保存生效。' : '返回异常：' + JSON.stringify(d).slice(0, 80);
+  } catch (e) {
+    $('proxy-status').textContent = '连接失败 ❌：' + e.message;
+  }
+};
 
 /* ---------- 初始化 ---------- */
 renderCharts();

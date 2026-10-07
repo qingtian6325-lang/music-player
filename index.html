@@ -24,8 +24,26 @@
   <nav class="topnav">
     <button id="nav-home" class="active">🏠 首页</button>
     <button id="nav-fav">❤️ 收藏</button>
+    <button id="settings-btn" title="中转设置">⚙️</button>
   </nav>
 </header>
+
+<!-- 中转设置 -->
+<div id="settings-modal" class="modal" hidden>
+  <div class="modal-box">
+    <h3>⚙️ 中转设置</h3>
+    <p class="modal-desc">如果你所在的网络打不开音乐直链（如公司网络），可以部署一个免费的 Cloudflare Worker 做中转，把它的地址填在这里。留空则直连。</p>
+    <input id="proxy-input" type="text" placeholder="https://你的worker.workers.dev">
+    <div class="modal-row">
+      <button id="proxy-test" class="ghost-btn">测试连接</button>
+      <button id="proxy-save" class="primary-btn">保存</button>
+      <button id="proxy-clear" class="ghost-btn">清除</button>
+      <button id="proxy-close" class="ghost-btn">关闭</button>
+    </div>
+    <div id="proxy-status" class="proxy-status"></div>
+    <p class="modal-desc small">部署方法见仓库里的 PROXY_SETUP.md，约 5 分钟。</p>
+  </div>
+</div>
 
 <main id="main">
   <!-- 首页：榜单 -->
