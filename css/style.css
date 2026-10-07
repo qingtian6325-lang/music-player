@@ -240,7 +240,7 @@ body.light .chart-card:nth-child(4n+4) .chart-tile { color: #9c36b5; }
   background: linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.62));
 }
 body.light #ambient-dim {
-  background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.75));
+  background: linear-gradient(180deg, rgba(255,255,255,.35), rgba(255,255,255,.52));
 }
 /* 电脑端：去框，环境光直接透出来 */
 @media (min-width: 861px) {
