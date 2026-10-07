@@ -13,6 +13,20 @@ function cors(res) {
   return res;
 }
 
+/* 通用流式透传：把上游的 body 直接管道返回，不在 Worker 里缓冲 */
+async function passthrough(req, src) {
+  const headers = { 'User-Agent': 'Mozilla/5.0' };
+  const range = req.headers.get('Range');
+  if (range) headers['Range'] = range;
+  const r = await fetch(src, { headers, redirect: 'follow' });
+  return cors(new Response(r.body, { status: r.status, headers: r.headers }));
+}
+
+function needSrc(url) {
+  const src = url.searchParams.get('src');
+  return src && /^https?:\/\//.test(src) ? src : null;
+}
+
 export default {
   async fetch(req) {
     const url = new URL(req.url);
@@ -36,21 +50,25 @@ export default {
       }
     }
 
-    // 2) 音频流式中转：/audio?src=<网易云直链> ，透传 Range 实现秒播 + 拖动
+    // 2) 音频流式中转：/audio?src=<直链> ，透传 Range 实现秒播 + 拖动
     if (url.pathname === '/audio') {
-      const src = url.searchParams.get('src');
-      if (!src || !/^https?:\/\//.test(src)) {
-        return cors(new Response('missing src', { status: 400 }));
-      }
-      const headers = { 'User-Agent': 'Mozilla/5.0' };
-      const range = req.headers.get('Range');
-      if (range) headers['Range'] = range;
+      const src = needSrc(url);
+      if (!src) return cors(new Response('missing src', { status: 400 }));
       try {
-        const r = await fetch(src, { headers, redirect: 'follow' });
-        // 直接把上游的 body 管道返回，不在 Worker 里缓冲，首字节极快
-        return cors(new Response(r.body, { status: r.status, headers: r.headers }));
+        return await passthrough(req, src);
       } catch (e) {
         return cors(new Response('audio fetch failed', { status: 502 }));
+      }
+    }
+
+    // 3) 图片中转：/img?src=<封面直链>（公司网络打不开 *.music.126.net 时用）
+    if (url.pathname === '/img') {
+      const src = needSrc(url);
+      if (!src) return cors(new Response('missing src', { status: 400 }));
+      try {
+        return await passthrough(req, src);
+      } catch (e) {
+        return cors(new Response('image fetch failed', { status: 502 }));
       }
     }
 

@@ -54,6 +54,12 @@ function audioSrc(cdnUrl) {
   const proxy = proxyBase();
   return proxy ? proxy + '/audio?src=' + encodeURIComponent(cdnUrl) : cdnUrl;
 }
+/* 封面地址：中转模式下走 Worker 图片转发（公司网打不开 music.126.net 时用） */
+function imgSrc(u) {
+  if (!u) return '';
+  const proxy = proxyBase();
+  return proxy ? proxy + '/img?src=' + encodeURIComponent(u) : u;
+}
 const urlCache = new Map();   // source:id -> {url, br}
 const lyricCache = new Map(); // source:id -> {lines:[{t, text, trans}]}
 const picCache = new Map();   // pic_id -> url
@@ -209,10 +215,11 @@ async function playTrack(index) {
   // 封面（搜索结果需要单独取）
   if (!track.pic && track.pic_id) track.pic = await resolvePic(track.pic_id);
   if (track.pic) {
-    $('pb-cover').src = track.pic;
-    $('lyrics-cover').src = track.pic;
+    const cover = imgSrc(track.pic);
+    $('pb-cover').src = cover;
+    $('lyrics-cover').src = cover;
     const bg = $('bg-blur');
-    bg.style.backgroundImage = `url("${track.pic}")`;
+    bg.style.backgroundImage = `url("${cover}")`;
     bg.style.opacity = 1;
   }
   // 歌词
@@ -284,7 +291,7 @@ function renderTrackList(tracks, title) {
     const loved = favorites.some((f) => f.id === t.id && f.source === t.source);
     row.innerHTML = `
       <span class="track-idx">${i + 1}</span>
-      <img class="track-thumb" loading="lazy" src="${t.pic || ''}" onerror="this.style.visibility='hidden'" alt="">
+      <img class="track-thumb" loading="lazy" src="${imgSrc(t.pic)}" onerror="this.style.visibility='hidden'" alt="">
       <div class="track-main">
         <div class="track-name">${escapeHtml(t.name)}</div>
         <div class="track-sub">${escapeHtml(t.artist.join(' / '))}${t.album ? ' · ' + escapeHtml(t.album) : ''}</div>
@@ -330,7 +337,7 @@ function renderCharts() {
   CHARTS.forEach((c) => {
     const card = document.createElement('div');
     card.className = 'chart-card';
-    card.innerHTML = `<img loading="lazy" src="${c.cover}" alt="${c.name}" onerror="this.style.display='none'"><div class="chart-name">${c.name}</div>`;
+    card.innerHTML = `<img loading="lazy" src="${imgSrc(c.cover)}" alt="${c.name}" onerror="this.style.display='none'"><div class="chart-name">${c.name}</div>`;
     card.onclick = () => openChart(c);
     grid.appendChild(card);
   });
