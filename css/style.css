@@ -223,6 +223,12 @@ body.light #player-bar { box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06); }
 }
 .icon-btn:hover { color: var(--text); }
 .icon-btn.sm svg { width: 17px; height: 17px; }
+#lyrics-btn {
+  font-size: 15px; font-weight: 800; width: 32px; height: 32px;
+  border: 1.5px solid var(--muted); line-height: 1;
+}
+#lyrics-btn:hover { color: var(--text); border-color: var(--text); }
+#lyrics-btn.active { color: var(--accent); border-color: var(--accent); }
 .play-main {
   width: 46px; height: 46px; border-radius: 50%;
   background: #ffffff; color: #000000; border: none;

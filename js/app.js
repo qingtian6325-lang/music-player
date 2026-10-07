@@ -474,8 +474,13 @@ $('theme-btn').onclick = () => {
   applyTheme();
   toast(light ? '已切换深色模式' : '已切换浅色模式');
 };
-$('lyrics-btn').onclick = () => { $('lyrics-panel').hidden = false; syncLyric(); };
-$('lyrics-close').onclick = () => { $('lyrics-panel').hidden = true; };
+function setLyricsOpen(open) {
+  $('lyrics-panel').hidden = !open;
+  $('lyrics-btn').classList.toggle('active', open);
+  if (open) syncLyric();
+}
+$('lyrics-btn').onclick = () => setLyricsOpen($('lyrics-panel').hidden);
+$('lyrics-close').onclick = () => setLyricsOpen(false);
 
 audio.addEventListener('timeupdate', () => {
   const cur = audio.currentTime, total = audio.duration || 0;
@@ -576,7 +581,7 @@ setPlayIcon(false);
 setIcon($('prev-btn'), 'prev');
 setIcon($('next-btn'), 'next');
 setIcon($('mode-btn'), 'repeat');
-setIcon($('lyrics-btn'), 'mic');
+$('lyrics-btn').textContent = '词';
 setIcon($('fav-btn'), 'heart');
 setIcon($('vol-ic'), 'volume');
 applyTheme();
