@@ -3,15 +3,15 @@ const API = 'https://music-api.gdstudio.xyz/api.php';
 const BR_FALLBACK = [999, 740, 320, 128];
 
 const CHARTS = [
-  { id: '19723756', name: '飙升榜' },
-  { id: '3779629', name: '新歌榜' },
-  { id: '3778678', name: '热歌榜' },
-  { id: '71384707', name: '古典榜' },
-  { id: '1978921795', name: '电音榜' },
-  { id: '71385702',   name: 'ACG榜' },
-  { id: '2809513713', name: '欧美榜' },
-  { id: '5059644681', name: '日语榜' },
-  { id: '745956260', name: '韩语榜' },
+  { id: '19723756', name: '飙升榜', cover: 'https://p1.music.126.net/rIi7Qzy2i2Y_1QD7cd0MYA==/109951170048506929.jpg' },
+  { id: '3779629', name: '新歌榜', cover: 'https://p1.music.126.net/5guhqPBTcIrrhLBotgaT6w==/109951170048511751.jpg' },
+  { id: '3778678', name: '热歌榜', cover: 'https://p1.music.126.net/0SUEG8yDACfx0Bw2MYFv4Q==/109951170048519512.jpg' },
+  { id: '71384707', name: '古典榜', cover: 'https://p1.music.126.net/urByD_AmfBDBrs7fA9-O8A==/109951167976973225.jpg' },
+  { id: '1978921795', name: '电音榜', cover: 'https://p1.music.126.net/hXGObvXfsGtFjFvRhOYAkA==/109951170091888741.jpg' },
+  { id: '71385702',   name: 'ACG榜', cover: 'https://p1.music.126.net/na1kEeCS1iZEkzOrs9r_9g==/109951167976973667.jpg' },
+  { id: '2809513713', name: '欧美榜', cover: 'https://p1.music.126.net/70_EO_Dc7NT_hhfvsapzcQ==/109951167430862162.jpg' },
+  { id: '5059644681', name: '日语榜', cover: 'https://p1.music.126.net/YFBFNI2F-4BveUpv6FKFuw==/109951167430864069.jpg' },
+  { id: '745956260', name: '韩语榜', cover: 'https://p1.music.126.net/5oN9YaFznwNGXkmi8i2Ytw==/109951167430864741.jpg' },
 ];
 
 /* ---------- 工具 ---------- */
@@ -53,6 +53,16 @@ async function api(params) {
 function audioSrc(cdnUrl) {
   const proxy = proxyBase();
   return proxy ? proxy + '/audio?src=' + encodeURIComponent(cdnUrl) : cdnUrl;
+}
+/* 封面地址：走 Worker /img 中转（公司网直连 music.126.net 会被墙）；失败时调用处回退显示 */
+function imgSrc(u) {
+  if (!u) return '';
+  let url = String(u).replace(/"/g, '');
+  if (url.includes('music.126.net') && !url.includes('param=')) {
+    url += (url.includes('?') ? '&' : '?') + 'param=400y400';
+  }
+  const proxy = proxyBase();
+  return proxy ? proxy + '/img?src=' + encodeURIComponent(url) : url;
 }
 const urlCache = new Map();   // source:id -> {url, br}
 const lyricCache = new Map(); // source:id -> {lines:[{t, text, trans}]}
@@ -253,7 +263,9 @@ function qualityName(br) {
 }
 
 function updatePlayerMeta(track, loading) {
-  $('pb-tile').textContent = (track.name || '♪').charAt(0);
+  const pic = track.pic ? imgSrc(track.pic) : '';
+  $('pb-tile').innerHTML = `<span>${escapeHtml((track.name || '♪').charAt(0))}</span>` +
+    (pic ? `<img src="${pic}" alt="" onerror="this.remove()">` : '');
   $('pb-title').textContent = track.name;
   $('pb-artist').textContent = track.artist.join(' / ') + (loading ? '（加载中…）' : '');
   $('lyrics-title').textContent = track.name;
@@ -364,7 +376,7 @@ function renderCharts() {
     const card = document.createElement('div');
     card.className = 'chart-card';
     card.innerHTML = `
-      <div class="chart-tile">${escapeHtml(c.name.charAt(0))}</div>
+      <div class="chart-tile"><span>${escapeHtml(c.name.charAt(0))}</span>${c.cover ? `<img loading="lazy" src="${imgSrc(c.cover)}" alt="" onerror="this.remove()">` : ''}</div>
       <div class="chart-name">${c.name}</div>
       <div class="chart-sub">榜单 · 点击查看曲目</div>`;
     card.onclick = () => openChart(c);
