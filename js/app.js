@@ -212,6 +212,7 @@ function syncLyric() {
 let ambientToken = 0;
 async function setAmbient(picUrl) {
   const amb = $('ambient');
+  if (!amb) return;
   if (!picUrl || window.innerWidth <= 860) { amb.classList.remove('on'); return; }
   const my = ++ambientToken;
   const url = imgSrc(picUrl);
@@ -582,8 +583,8 @@ audio.addEventListener('timeupdate', () => {
   syncLyric();
 });
 audio.addEventListener('ended', () => nextTrack(true));
-audio.addEventListener('play', () => { setPlayIcon(true); $('player-bar').classList.remove('paused'); $('now-playing').classList.remove('paused'); $('ambient').classList.remove('paused'); });
-audio.addEventListener('pause', () => { setBuffering(false); $('player-bar').classList.add('paused'); $('now-playing').classList.add('paused'); $('ambient').classList.add('paused'); });
+audio.addEventListener('play', () => { setPlayIcon(true); $('player-bar').classList.remove('paused'); $('now-playing').classList.remove('paused'); const a = $('ambient'); if (a) a.classList.remove('paused'); });
+audio.addEventListener('pause', () => { setBuffering(false); $('player-bar').classList.add('paused'); $('now-playing').classList.add('paused'); const a = $('ambient'); if (a) a.classList.add('paused'); });
 audio.addEventListener('waiting', () => setBuffering(true));
 audio.addEventListener('playing', () => setBuffering(false));
 audio.addEventListener('seeking', () => setBuffering(true));
