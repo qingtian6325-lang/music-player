@@ -46,6 +46,51 @@ button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; f
 .nav-ic { display: inline-flex; }
 .nav-ic svg { width: 20px; height: 20px; display: block; }
 
+/* ---------- 环境光背景（跳动版） ---------- */
+#ambient {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  opacity: 0; transition: opacity 1.2s; overflow: hidden;
+}
+#ambient.on { opacity: 1; }
+#ambient-img {
+  position: absolute; inset: -6%;
+  background-size: cover; background-position: center;
+  filter: blur(70px) saturate(1.5);
+  opacity: 0.6; transition: opacity 0.8s;
+}
+#ambient-glow {
+  position: absolute; inset: -12%;
+  background:
+    radial-gradient(42% 42% at 22% 28%, var(--glow1, rgba(29,185,84,.55)), transparent 70%),
+    radial-gradient(38% 38% at 78% 72%, var(--glow2, rgba(29,185,84,.4)), transparent 70%),
+    radial-gradient(30% 30% at 55% 55%, var(--glow1, rgba(29,185,84,.3)), transparent 70%);
+  filter: blur(30px);
+  animation: breathe 2.8s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50% { transform: scale(1.14); opacity: 0.95; }
+}
+#ambient.paused #ambient-glow { animation-play-state: paused; opacity: 0.4; }
+#ambient-dim {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,.62), rgba(0,0,0,.8));
+}
+body.light #ambient-dim {
+  background: linear-gradient(180deg, rgba(255,255,255,.7), rgba(255,255,255,.88));
+}
+body.light #ambient-img { opacity: 0.32; }
+body.light #ambient-glow { opacity: 0.5; }
+
+/* 内容浮在环境光之上，面板半透明透出环境光 */
+.app { position: relative; z-index: 1; }
+.side-card, #main { background: rgba(18, 18, 18, 0.78); }
+body.light .side-card, body.light #main { background: rgba(255, 255, 255, 0.8); }
+#player-bar { background: rgba(0, 0, 0, 0.82); }
+body.light #player-bar { background: rgba(255, 255, 255, 0.88); }
+.lyrics-panel { background: rgba(18, 18, 18, 0.94); }
+body.light .lyrics-panel { background: rgba(255, 255, 255, 0.94); }
+
 /* ---------- 主框架 ---------- */
 .app { display: flex; gap: 8px; padding: 8px; min-height: 100vh; }
 #sidebar { width: 330px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }

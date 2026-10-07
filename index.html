@@ -5,9 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>音乐播放器</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=20261007k">
+<link rel="stylesheet" href="css/style.css?v=20261007m">
 </head>
 <body>
+
+<!-- 环境光背景 -->
+<div id="ambient" aria-hidden="true">
+  <div id="ambient-img"></div>
+  <div id="ambient-glow"></div>
+  <div id="ambient-dim"></div>
+</div>
 
 <div class="app">
   <aside id="sidebar">
@@ -123,6 +130,6 @@
 <div id="toast" class="toast" hidden></div>
 
 <audio id="audio" preload="auto"></audio>
-<script src="js/app.js?v=20261007k"></script>
+<script src="js/app.js?v=20261007m"></script>
 </body>
 </html>

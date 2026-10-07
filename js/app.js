@@ -201,6 +201,60 @@ function syncLyric() {
   }
 }
 
+/* ---------- 环境光背景：封面模糊 + 跟色呼吸辉光 ---------- */
+function extractGlowColor(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = c.height = 24;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, 24, 24);
+        const d = ctx.getImageData(0, 0, 24, 24).data;
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let i = 0; i < d.length; i += 16) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+        r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        if (mx > 0) { // 拉开饱和度，辉光更鲜艳
+          const k = 1.4;
+          r = Math.min(255, Math.round((r - mn) * k + mn));
+          g = Math.min(255, Math.round((g - mn) * k + mn));
+          b = Math.min(255, Math.round((b - mn) * k + mn));
+        }
+        resolve({ c1: `rgba(${r},${g},${b},.55)`, c2: `rgba(${r},${g},${b},.38)` });
+      } catch (e) { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+let ambientToken = 0;
+async function setAmbient(picUrl) {
+  const my = ++ambientToken;
+  const amb = $('ambient'), bg = $('ambient-img');
+  if (!picUrl) return;
+  const url = imgSrc(picUrl);
+  const pre = new Image();
+  pre.src = url;
+  await new Promise((res) => { pre.onload = res; pre.onerror = res; });
+  if (my !== ambientToken) return;
+  bg.style.opacity = '0';
+  setTimeout(() => {
+    if (my !== ambientToken) return;
+    bg.style.backgroundImage = `url("${url.replace(/"/g, '')}")`;
+    bg.style.opacity = '';
+    amb.classList.add('on');
+    amb.classList.remove('paused');
+  }, 250);
+  const colors = await extractGlowColor(url);
+  if (my !== ambientToken || !colors) return;
+  amb.style.setProperty('--glow1', colors.c1);
+  amb.style.setProperty('--glow2', colors.c2);
+}
+
 /* ---------- 播放器状态 ---------- */
 const audio = $('audio');
 let queue = [];        // 当前播放列表
@@ -228,6 +282,7 @@ async function playTrack(index) {
   markPlayingRow();
   updatePlayerMeta(track, true);
   setBuffering(true);
+  setAmbient(track.pic);
 
   // 解析最高可用音质地址
   const r = await resolveUrl(track.source, track.id);
@@ -512,8 +567,8 @@ audio.addEventListener('timeupdate', () => {
   syncLyric();
 });
 audio.addEventListener('ended', () => nextTrack(true));
-audio.addEventListener('play', () => setPlayIcon(true));
-audio.addEventListener('pause', () => setBuffering(false));
+audio.addEventListener('play', () => { setPlayIcon(true); $('ambient').classList.remove('paused'); });
+audio.addEventListener('pause', () => { setBuffering(false); $('ambient').classList.add('paused'); });
 audio.addEventListener('waiting', () => setBuffering(true));
 audio.addEventListener('playing', () => setBuffering(false));
 audio.addEventListener('seeking', () => setBuffering(true));
