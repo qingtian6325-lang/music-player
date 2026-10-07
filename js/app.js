@@ -518,5 +518,17 @@ $('proxy-test').onclick = async () => {
   }
 };
 
+/* ---------- 彩蛋：2.5 秒内连点 logo 5 次，开 YouTube ---------- */
+let logoClicks = 0, logoTimer = null;
+$('logo-home').addEventListener('click', () => {
+  logoClicks++;
+  clearTimeout(logoTimer);
+  logoTimer = setTimeout(() => (logoClicks = 0), 2500);
+  if (logoClicks >= 5) {
+    logoClicks = 0;
+    window.open('https://www.youtube.com/', '_blank', 'noopener');
+  }
+});
+
 /* ---------- 初始化 ---------- */
 renderCharts();
