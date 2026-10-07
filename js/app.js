@@ -3,15 +3,15 @@ const API = 'https://music-api.gdstudio.xyz/api.php';
 const BR_FALLBACK = [999, 740, 320, 128];
 
 const CHARTS = [
-  { id: '19723756',   name: '飙升榜', cover: 'https://p1.music.126.net/rIi7Qzy2i2Y_1QD7cd0MYA==/109951170048506929.jpg' },
-  { id: '3779629',    name: '新歌榜', cover: 'https://p1.music.126.net/5guhqPBTcIrrhLBotgaT6w==/109951170048511751.jpg' },
-  { id: '3778678',    name: '热歌榜', cover: 'https://p1.music.126.net/0SUEG8yDACfx0Bw2MYFv4Q==/109951170048519512.jpg' },
-  { id: '71384707',   name: '古典榜', cover: 'https://p1.music.126.net/urByD_AmfBDBrs7fA9-O8A==/109951167976973225.jpg' },
-  { id: '1978921795', name: '电音榜', cover: 'https://p1.music.126.net/hXGObvXfsGtFjFvRhOYAkA==/109951170091888741.jpg' },
-  { id: '71385702',   name: 'ACG榜',  cover: 'https://p1.music.126.net/na1kEeCS1iZEkzOrs9r_9g==/109951167976973667.jpg' },
-  { id: '2809513713', name: '欧美榜', cover: 'https://p1.music.126.net/70_EO_Dc7NT_hhfvsapzcQ==/109951167430862162.jpg' },
-  { id: '5059644681', name: '日语榜', cover: 'https://p1.music.126.net/YFBFNI2F-4BveUpv6FKFuw==/109951167430864069.jpg' },
-  { id: '745956260',  name: '韩语榜', cover: 'https://p1.music.126.net/5oN9YaFznwNGXkmi8i2Ytw==/109951167430864741.jpg' },
+  { id: '19723756', name: '飙升榜' },
+  { id: '3779629', name: '新歌榜' },
+  { id: '3778678', name: '热歌榜' },
+  { id: '71384707', name: '古典榜' },
+  { id: '1978921795', name: '电音榜' },
+  { id: '71385702',   name: 'ACG榜' },
+  { id: '2809513713', name: '欧美榜' },
+  { id: '5059644681', name: '日语榜' },
+  { id: '745956260', name: '韩语榜' },
 ];
 
 /* ---------- 工具 ---------- */
@@ -54,15 +54,8 @@ function audioSrc(cdnUrl) {
   const proxy = proxyBase();
   return proxy ? proxy + '/audio?src=' + encodeURIComponent(cdnUrl) : cdnUrl;
 }
-/* 封面地址：中转模式下走 Worker 图片转发（公司网打不开 music.126.net 时用） */
-function imgSrc(u) {
-  if (!u) return '';
-  const proxy = proxyBase();
-  return proxy ? proxy + '/img?src=' + encodeURIComponent(u) : u;
-}
 const urlCache = new Map();   // source:id -> {url, br}
 const lyricCache = new Map(); // source:id -> {lines:[{t, text, trans}]}
-const picCache = new Map();   // pic_id -> url
 
 async function resolveUrl(source, id) {
   const key = source + ':' + id;
@@ -78,17 +71,6 @@ async function resolveUrl(source, id) {
     } catch (e) { /* 换下一档 */ }
   }
   return null;
-}
-
-async function resolvePic(picId) {
-  if (!picId) return '';
-  if (picCache.has(picId)) return picCache.get(picId);
-  try {
-    const d = await api({ types: 'pic', id: picId, size: '500' });
-    const u = (d && d.url) || '';
-    picCache.set(picId, u);
-    return u;
-  } catch (e) { return ''; }
 }
 
 /* ---------- 歌词 ---------- */
@@ -212,17 +194,7 @@ async function playTrack(index) {
   $('quality-badge').hidden = false;
   $('quality-badge').textContent = qualityName(r.br);
 
-  // 封面（搜索结果需要单独取）
-  if (!track.pic && track.pic_id) track.pic = await resolvePic(track.pic_id);
-  if (track.pic) {
-    const cover = imgSrc(track.pic);
-    $('pb-cover').src = cover;
-    $('lyrics-cover').src = cover;
-    const bg = $('bg-blur');
-    bg.style.backgroundImage = `url("${cover}")`;
-    bg.style.opacity = 1;
-  }
-  // 歌词
+  // 歌词（无图版不加载封面）
   lyricLines = await loadLyric(track);
   if (currentTrack() === track) renderLyric(lyricLines);
 }
@@ -291,7 +263,6 @@ function renderTrackList(tracks, title) {
     const loved = favorites.some((f) => f.id === t.id && f.source === t.source);
     row.innerHTML = `
       <span class="track-idx">${i + 1}</span>
-      <img class="track-thumb" loading="lazy" src="${imgSrc(t.pic)}" onerror="this.style.visibility='hidden'" alt="">
       <div class="track-main">
         <div class="track-name">${escapeHtml(t.name)}</div>
         <div class="track-sub">${escapeHtml(t.artist.join(' / '))}${t.album ? ' · ' + escapeHtml(t.album) : ''}</div>
@@ -330,16 +301,31 @@ function toggleFav(t) {
   updateFavBtn();
 }
 
-/* ---------- 首页榜单 ---------- */
+/* ---------- 首页榜单（无图文字版） ---------- */
 function renderCharts() {
   const grid = $('chart-grid');
   grid.innerHTML = '';
+  CHARTS.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'chart-row';
+    row.innerHTML = `
+      <span class="chart-rank">${String(i + 1).padStart(2, '0')}</span>
+      <div>
+        <div class="chart-name">${c.name}</div>
+        <div class="chart-sub">点击查看榜单曲目</div>
+      </div>
+      <span class="chart-go">›</span>`;
+    row.onclick = () => openChart(c);
+    grid.appendChild(row);
+  });
+  const side = $('side-charts');
+  side.innerHTML = '';
   CHARTS.forEach((c) => {
-    const card = document.createElement('div');
-    card.className = 'chart-card';
-    card.innerHTML = `<img loading="lazy" src="${imgSrc(c.cover)}" alt="${c.name}" onerror="this.style.display='none'"><div class="chart-name">${c.name}</div>`;
-    card.onclick = () => openChart(c);
-    grid.appendChild(card);
+    const b = document.createElement('button');
+    b.className = 'side-chart-link';
+    b.innerHTML = `<span>${c.name}</span><span>›</span>`;
+    b.onclick = () => openChart(c);
+    side.appendChild(b);
   });
 }
 
