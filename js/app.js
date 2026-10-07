@@ -210,6 +210,7 @@ function syncLyric() {
 
 /* ---------- 全屏环境光（仅电脑端） ---------- */
 let ambientToken = 0;
+let ambientSlide = 0;
 async function setAmbient(picUrl) {
   const amb = $('ambient');
   if (!amb) return;
@@ -221,16 +222,15 @@ async function setAmbient(picUrl) {
   await new Promise((res) => { pre.onload = res; pre.onerror = res; });
   if (my !== ambientToken) return;
   const cssUrl = `url("${url.replace(/"/g, '')}")`;
-  const bg = $('ambient-img');
-  bg.style.opacity = '0';
-  setTimeout(() => {
-    if (my !== ambientToken) return;
-    bg.style.backgroundImage = cssUrl;
-    $('ambient-glow').style.backgroundImage = cssUrl;
-    bg.style.opacity = '';
-    amb.classList.add('on');
-    amb.classList.toggle('paused', audio.paused);
-  }, 250);
+  const show = $('ambient-s' + (1 - ambientSlide));
+  const hide = $('ambient-s' + ambientSlide);
+  show.querySelector('.ambient-img').style.backgroundImage = cssUrl;
+  show.querySelector('.ambient-glow').style.backgroundImage = cssUrl;
+  show.classList.add('on');
+  hide.classList.remove('on');
+  ambientSlide = 1 - ambientSlide;
+  amb.classList.add('on');
+  amb.classList.toggle('paused', audio.paused);
 }
 
 /* ---------- 正在播放全屏 ---------- */

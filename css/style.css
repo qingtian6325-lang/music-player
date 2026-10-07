@@ -222,19 +222,21 @@ body.light .chart-card:nth-child(4n+4) .chart-tile { color: #9c36b5; }
   opacity: 0; transition: opacity 1.2s; overflow: hidden;
 }
 #ambient.on { opacity: 1; }
-#ambient-img {
+.ambient-slide { position: absolute; inset: 0; opacity: 0; transition: opacity 1.6s ease; }
+.ambient-slide.on { opacity: 1; }
+.ambient-slide .ambient-img {
   position: absolute; inset: -6%;
   background-size: cover; background-position: center;
   filter: blur(80px) saturate(1.5);
-  opacity: 0.7; transition: opacity 0.8s;
+  opacity: 0.7;
 }
-#ambient-glow {
+.ambient-slide .ambient-glow {
   position: absolute; inset: -10%;
   background-size: cover; background-position: center;
   filter: blur(60px) saturate(1.8);
   animation: breathe 2.8s ease-in-out infinite;
 }
-#ambient.paused #ambient-glow { animation-play-state: paused; }
+#ambient.paused .ambient-glow { animation-play-state: paused; }
 #ambient-dim {
   position: absolute; inset: 0;
   background: linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.62));
