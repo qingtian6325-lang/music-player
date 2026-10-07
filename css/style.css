@@ -242,11 +242,16 @@ body.light .chart-card:nth-child(4n+4) .chart-tile { color: #9c36b5; }
 body.light #ambient-dim {
   background: linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,255,255,.82));
 }
-/* 电脑端：内容浮在环境光之上，面板半透明 */
+/* 电脑端：内容浮在环境光之上，面板变透明透出环境光 */
 @media (min-width: 861px) {
   .app { position: relative; z-index: 1; }
-  .side-card, #main { background: rgba(18, 18, 18, 0.78); }
-  body.light .side-card, body.light #main { background: rgba(255, 255, 255, 0.8); }
+  #main { background: transparent; }
+  .side-card { background: rgba(18, 18, 18, 0.45); }
+  .chart-card { background: rgba(24, 24, 24, 0.5); }
+  .chart-card:hover { background: rgba(40, 40, 40, 0.6); }
+  body.light #main { background: transparent; }
+  body.light .side-card, body.light .chart-card { background: rgba(255, 255, 255, 0.55); }
+  body.light .chart-card:hover { background: rgba(236, 236, 240, 0.7); }
   #player-bar { background: rgba(0, 0, 0, 0.82); }
   body.light #player-bar { background: rgba(255, 255, 255, 0.88); }
 }
