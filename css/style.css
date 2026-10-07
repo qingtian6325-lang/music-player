@@ -225,8 +225,8 @@ body.light .chart-card:nth-child(4n+4) .chart-tile { color: #9c36b5; }
 #ambient-img {
   position: absolute; inset: -6%;
   background-size: cover; background-position: center;
-  filter: blur(80px) saturate(1.4);
-  opacity: 0.55; transition: opacity 0.8s;
+  filter: blur(80px) saturate(1.5);
+  opacity: 0.7; transition: opacity 0.8s;
 }
 #ambient-glow {
   position: absolute; inset: -10%;
@@ -237,21 +237,22 @@ body.light .chart-card:nth-child(4n+4) .chart-tile { color: #9c36b5; }
 #ambient.paused #ambient-glow { animation-play-state: paused; }
 #ambient-dim {
   position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.72));
+  background: linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.62));
 }
 body.light #ambient-dim {
-  background: linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,255,255,.82));
+  background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.75));
 }
-/* 电脑端：内容浮在环境光之上，面板变透明透出环境光 */
+/* 电脑端：去框，环境光直接透出来 */
 @media (min-width: 861px) {
   .app { position: relative; z-index: 1; }
   #main { background: transparent; }
-  .side-card { background: rgba(18, 18, 18, 0.22); }
-  .chart-card { background: rgba(24, 24, 24, 0.28); }
-  .chart-card:hover { background: rgba(40, 40, 40, 0.38); }
+  .side-card { background: transparent; }
+  .chart-card { background: transparent; }
+  .chart-card:hover { background: rgba(255, 255, 255, 0.07); }
+  .track-row:hover { background: rgba(255, 255, 255, 0.06); }
   body.light #main { background: transparent; }
-  body.light .side-card, body.light .chart-card { background: rgba(255, 255, 255, 0.3); }
-  body.light .chart-card:hover { background: rgba(236, 236, 240, 0.45); }
+  body.light .side-card, body.light .chart-card { background: transparent; }
+  body.light .chart-card:hover, body.light .track-row:hover { background: rgba(0, 0, 0, 0.05); }
   #player-bar { background: rgba(0, 0, 0, 0.82); }
   body.light #player-bar { background: rgba(255, 255, 255, 0.88); }
 }
