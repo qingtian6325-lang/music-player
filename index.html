@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>音乐播放器</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=20261007c">
+<link rel="stylesheet" href="css/style.css?v=20261007d">
 </head>
 <body>
 
 <aside id="sidebar">
-  <div class="logo" id="logo-home">🎵 音乐播放器</div>
+  <div class="logo" id="logo-home"><span class="logo-icon" id="logo-icon"></span>音乐播放器</div>
   <div class="search-box">
     <input id="search-input" type="text" placeholder="搜索歌曲 / 歌手 / 专辑…" autocomplete="off">
     <div class="search-row">
@@ -23,9 +23,10 @@
     </div>
   </div>
   <nav class="side-nav">
-    <button id="nav-home" class="active">🏠 首页</button>
-    <button id="nav-fav">🤍 收藏</button>
-    <button id="settings-btn">⚙️ 设置</button>
+    <button id="nav-home" class="active"><span class="nav-ic" id="nav-home-ic"></span>首页</button>
+    <button id="nav-fav"><span class="nav-ic" id="nav-fav-ic"></span>收藏</button>
+    <button id="theme-btn"><span class="nav-ic" id="theme-ic"></span><span id="theme-label">浅色模式</span></button>
+    <button id="settings-btn"><span class="nav-ic" id="settings-ic"></span>设置</button>
   </nav>
   <div class="side-label">榜单</div>
   <div id="side-charts"></div>
@@ -40,7 +41,7 @@
 
     <section id="view-list" hidden>
       <div class="list-header">
-        <button id="back-home" class="ghost-btn">← 返回</button>
+        <button id="back-home" class="ghost-btn"><span class="btn-ic" id="back-ic"></span>返回</button>
         <h2 id="list-title" class="section-title"></h2>
       </div>
       <div id="track-list" class="track-list"></div>
@@ -58,7 +59,7 @@
       <div id="lyrics-title" class="lyrics-title">—</div>
       <div id="lyrics-artist" class="lyrics-artist">—</div>
     </div>
-    <button id="lyrics-close" class="ghost-btn">✕</button>
+    <button id="lyrics-close" class="ghost-btn icon-only" title="关闭"><span class="btn-ic" id="lyrics-close-ic"></span></button>
   </div>
   <div id="lyrics-body" class="lyrics-body">
     <div class="lyrics-empty">暂无歌词</div>
@@ -72,15 +73,15 @@
       <div id="pb-title" class="pb-title">还没有播放歌曲</div>
       <div id="pb-artist" class="pb-artist">搜一首歌或点开榜单开始吧</div>
     </div>
-    <button id="fav-btn" class="icon-btn" title="收藏">🤍</button>
+    <button id="fav-btn" class="icon-btn" title="收藏" aria-label="收藏"></button>
   </div>
   <div class="pb-center">
     <div class="pb-controls">
-      <button id="mode-btn" class="icon-btn" title="播放模式：顺序">🔁</button>
-      <button id="prev-btn" class="icon-btn" title="上一首">⏮</button>
-      <button id="play-btn" class="icon-btn big" title="播放/暂停">▶</button>
-      <button id="next-btn" class="icon-btn" title="下一首">⏭</button>
-      <button id="lyrics-btn" class="icon-btn" title="歌词">🎤</button>
+      <button id="mode-btn" class="icon-btn" title="播放模式：顺序" aria-label="播放模式"></button>
+      <button id="prev-btn" class="icon-btn" title="上一首" aria-label="上一首"></button>
+      <button id="play-btn" class="icon-btn big" title="播放/暂停" aria-label="播放暂停"></button>
+      <button id="next-btn" class="icon-btn" title="下一首" aria-label="下一首"></button>
+      <button id="lyrics-btn" class="icon-btn" title="歌词" aria-label="歌词"></button>
     </div>
     <div class="pb-progress">
       <span id="time-cur">0:00</span>
@@ -90,15 +91,15 @@
     </div>
   </div>
   <div class="pb-right">
-    <span class="vol-icon">🔊</span>
+    <span class="vol-icon" id="vol-ic"></span>
     <input id="vol-slider" type="range" min="0" max="100" value="80">
   </div>
 </footer>
 
-<!-- 中转设置 -->
+<!-- 设置 -->
 <div id="settings-modal" class="modal" hidden>
   <div class="modal-box">
-    <h3>⚙️ 设置</h3>
+    <h3>设置</h3>
     <p class="modal-desc">本站默认使用公共中转（disablecdnblock.qingtian6325.workers.dev），点开即听，公司网络也能用。你也可以填自己的 Worker 地址覆盖它；清空则恢复默认中转。</p>
     <input id="proxy-input" type="text" placeholder="https://你的worker.workers.dev">
     <div class="modal-row">
@@ -114,6 +115,6 @@
 <div id="toast" class="toast" hidden></div>
 
 <audio id="audio" preload="auto"></audio>
-<script src="js/app.js?v=20261007c"></script>
+<script src="js/app.js?v=20261007d"></script>
 </body>
 </html>
