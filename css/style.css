@@ -246,12 +246,12 @@ body.light #ambient-dim {
 @media (min-width: 861px) {
   .app { position: relative; z-index: 1; }
   #main { background: transparent; }
-  .side-card { background: rgba(18, 18, 18, 0.45); }
-  .chart-card { background: rgba(24, 24, 24, 0.5); }
-  .chart-card:hover { background: rgba(40, 40, 40, 0.6); }
+  .side-card { background: rgba(18, 18, 18, 0.22); }
+  .chart-card { background: rgba(24, 24, 24, 0.28); }
+  .chart-card:hover { background: rgba(40, 40, 40, 0.38); }
   body.light #main { background: transparent; }
-  body.light .side-card, body.light .chart-card { background: rgba(255, 255, 255, 0.55); }
-  body.light .chart-card:hover { background: rgba(236, 236, 240, 0.7); }
+  body.light .side-card, body.light .chart-card { background: rgba(255, 255, 255, 0.3); }
+  body.light .chart-card:hover { background: rgba(236, 236, 240, 0.45); }
   #player-bar { background: rgba(0, 0, 0, 0.82); }
   body.light #player-bar { background: rgba(255, 255, 255, 0.88); }
 }
