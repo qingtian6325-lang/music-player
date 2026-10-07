@@ -216,6 +216,68 @@ body.light .chart-card:nth-child(4n+4) .chart-tile { color: #9c36b5; }
 .lyric-line.active .trans { color: var(--accent); opacity: 0.8; }
 .lyrics-empty { color: var(--muted); margin-top: 60px; }
 
+/* ---------- 正在播放全屏 ---------- */
+.now-playing {
+  position: fixed; inset: 0; z-index: 70;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  animation: npIn 0.3s ease;
+}
+@keyframes npIn { from { opacity: 0; transform: scale(1.03); } }
+.np-bg {
+  position: absolute; inset: -4%;
+  background-size: cover; background-position: center;
+  filter: blur(24px) saturate(1.3);
+}
+.np-dim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); }
+body.light .np-dim { background: rgba(255, 255, 255, 0.55); }
+.np-close {
+  position: absolute; top: 18px; right: 18px; z-index: 2;
+  background: rgba(0, 0, 0, 0.35); border: none; color: #fff;
+  width: 42px; height: 42px; border-radius: 50%; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.np-close:hover { background: rgba(0, 0, 0, 0.55); transform: scale(1.06); }
+.np-close .btn-ic svg { width: 18px; height: 18px; }
+.np-center { position: relative; z-index: 1; text-align: center; padding: 20px; max-width: 100%; }
+.np-cover-wrap { position: relative; width: min(320px, 66vw); margin: 0 auto 26px; }
+.np-cover {
+  width: 100%; aspect-ratio: 1; border-radius: 14px;
+  background-size: cover; background-position: center;
+  background-color: var(--accent-dim);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 90px; font-weight: 800; color: var(--accent);
+  position: relative; z-index: 1;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: npPulse 2.8s ease-in-out infinite;
+}
+@keyframes npPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.045); }
+}
+.np-glow {
+  position: absolute; inset: -26px; z-index: 0;
+  background-size: cover; background-position: center;
+  filter: blur(38px) saturate(1.8);
+  border-radius: 26px;
+  animation: breathe 2.8s ease-in-out infinite;
+}
+#now-playing.paused .np-cover, #now-playing.paused .np-glow { animation-play-state: paused; }
+.np-title {
+  font-size: 24px; font-weight: 800; color: #fff; margin-bottom: 6px;
+  max-width: 82vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.np-artist { font-size: 15px; color: rgba(255, 255, 255, 0.75); margin-bottom: 30px; }
+body.light .np-title { color: #14141a; }
+body.light .np-artist { color: rgba(0, 0, 0, 0.62); }
+.np-controls { display: flex; align-items: center; justify-content: center; gap: 30px; }
+.np-controls .icon-btn { color: rgba(255, 255, 255, 0.85); }
+.np-controls .icon-btn svg { width: 26px; height: 26px; }
+.np-controls .play-main { width: 58px; height: 58px; }
+.np-controls .play-main svg { width: 26px; height: 26px; }
+body.light .np-controls .icon-btn { color: rgba(0, 0, 0, 0.66); }
+#pb-open { cursor: pointer; }
+
 /* ---------- 底部播放条 ---------- */
 #player-bar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 55;

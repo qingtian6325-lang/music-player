@@ -110,12 +110,19 @@ function setIcon(el, name) { if (el) el.innerHTML = ICONS[name]; }
 function setPlayIcon(playing) {
   setIcon($('play-btn'), playing ? 'pause' : 'play');
   $('play-btn').classList.toggle('pausing', playing);
+  const npb = $('np-play');
+  if (npb) {
+    setIcon(npb, playing ? 'pause' : 'play');
+    npb.classList.toggle('pausing', playing);
+  }
 }
 /* 缓冲中：播放键变转圈 + 显示"缓冲中…" */
 function setBuffering(on) {
   $('buffer-hint').hidden = !on;
   if (on) {
     $('play-btn').innerHTML = '<span class="spinner"></span>';
+    const npb = $('np-play');
+    if (npb) npb.innerHTML = '<span class="spinner"></span>';
   } else {
     setPlayIcon(!audio.paused);
   }
@@ -201,6 +208,29 @@ function syncLyric() {
   }
 }
 
+/* ---------- 正在播放全屏 ---------- */
+function syncNowPlaying(track) {
+  const pic = track.pic ? imgSrc(track.pic) : '';
+  const url = pic ? `url("${pic.replace(/"/g, '')}")` : '';
+  $('np-bg').style.backgroundImage = url;
+  $('np-cover').style.backgroundImage = url;
+  $('np-glow').style.backgroundImage = url;
+  $('np-cover-char').textContent = (track.name || '\u266a').charAt(0);
+  $('np-title').textContent = track.name;
+  $('np-artist').textContent = track.artist.join(' / ');
+}
+function openNowPlaying() {
+  if (!currentTrack()) return;
+  syncNowPlaying(currentTrack());
+  $('now-playing').hidden = false;
+  $('now-playing').classList.toggle('paused', audio.paused);
+  document.body.style.overflow = 'hidden';
+}
+function closeNowPlaying() {
+  $('now-playing').hidden = true;
+  document.body.style.overflow = '';
+}
+
 /* ---------- 播放器状态 ---------- */
 const audio = $('audio');
 let queue = [];        // 当前播放列表
@@ -228,6 +258,7 @@ async function playTrack(index) {
   markPlayingRow();
   updatePlayerMeta(track, true);
   setBuffering(true);
+  if (!$('now-playing').hidden) syncNowPlaying(track);
 
   // 解析最高可用音质地址
   const r = await resolveUrl(track.source, track.id);
@@ -510,6 +541,12 @@ function setLyricsOpen(open) {
 }
 $('lyrics-btn').onclick = () => setLyricsOpen($('lyrics-panel').hidden);
 $('lyrics-close').onclick = () => setLyricsOpen(false);
+$('pb-open').onclick = openNowPlaying;
+$('np-close').onclick = closeNowPlaying;
+$('np-prev').onclick = () => prevTrack();
+$('np-next').onclick = () => nextTrack(false);
+$('np-play').onclick = () => togglePlay();
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNowPlaying(); });
 
 audio.addEventListener('timeupdate', () => {
   const cur = audio.currentTime, total = audio.duration || 0;
@@ -520,8 +557,8 @@ audio.addEventListener('timeupdate', () => {
   syncLyric();
 });
 audio.addEventListener('ended', () => nextTrack(true));
-audio.addEventListener('play', () => { setPlayIcon(true); $('player-bar').classList.remove('paused'); });
-audio.addEventListener('pause', () => { setBuffering(false); $('player-bar').classList.add('paused'); });
+audio.addEventListener('play', () => { setPlayIcon(true); $('player-bar').classList.remove('paused'); $('now-playing').classList.remove('paused'); });
+audio.addEventListener('pause', () => { setBuffering(false); $('player-bar').classList.add('paused'); $('now-playing').classList.add('paused'); });
 audio.addEventListener('waiting', () => setBuffering(true));
 audio.addEventListener('playing', () => setBuffering(false));
 audio.addEventListener('seeking', () => setBuffering(true));
@@ -620,5 +657,9 @@ setIcon($('mode-btn'), 'repeat');
 $('lyrics-btn').textContent = '词';
 setIcon($('fav-btn'), 'heart');
 setIcon($('vol-ic'), 'volume');
+setIcon($('np-close-ic'), 'x');
+setIcon($('np-prev'), 'prev');
+setIcon($('np-next'), 'next');
+setIcon($('np-play'), 'play');
 applyTheme();
 renderCharts();
