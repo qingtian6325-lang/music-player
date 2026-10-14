@@ -384,6 +384,20 @@ function updatePlayerMeta(track, loading) {
   $('lyrics-artist').textContent = track.artist.join(' / ');
   updateFavBtn();
   document.title = `${track.name} - ${track.artist.join('/')} | 音乐播放器`;
+  // iOS 系统播放器 / 锁屏封面
+  try {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.name || '音乐播放器',
+        artist: track.artist.join(' / ') || '',
+        artwork: pic ? [{ src: pic, sizes: '512x512', type: 'image/jpeg' }] : []
+      });
+      navigator.mediaSession.setActionHandler('play', () => togglePlay());
+      navigator.mediaSession.setActionHandler('pause', () => togglePlay());
+      navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
+      navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack(false));
+    }
+  } catch (e) { /* 忽略 */ }
 }
 
 function updateFavBtn() {
