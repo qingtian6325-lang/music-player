@@ -547,6 +547,16 @@ body.light .lyrics-panel.fullscreen { background: #f5f5f7; }
 .lyrics-panel.fullscreen .lyrics-body { position: relative; z-index: 1; }
 .lyrics-panel.fullscreen .lyrics-head { border-bottom-color: rgba(255,255,255,.12); background: transparent; }
 .lyrics-panel.fullscreen .lyrics-body { padding: 40px 8vw; }
+.lyrics-controls { display: none; }
+.lyrics-panel.fullscreen .lyrics-controls {
+  display: flex; align-items: center; justify-content: center; gap: 28px;
+  padding: 18px 20px 34px; position: relative; z-index: 1;
+}
+.lyric-ctrl { width: 56px; height: 56px; border-radius: 50%; }
+.lyric-ctrl .btn-ic { width: 26px; height: 26px; }
+.lyric-ctrl-main { width: 72px; height: 72px; background: var(--accent); border: none; }
+.lyric-ctrl-main .btn-ic { width: 32px; height: 32px; filter: brightness(0); }
+body.light .lyric-ctrl-main .btn-ic { filter: brightness(0); }
 .lyrics-panel.fullscreen .lyric-line { font-size: 22px; padding: 14px 8px; }
 .lyrics-panel.fullscreen .lyric-line .trans { font-size: 16px; }
 .lyrics-panel.fullscreen .lyric-line.active { font-size: 30px; }

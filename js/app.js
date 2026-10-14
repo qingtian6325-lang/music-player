@@ -117,6 +117,8 @@ function setPlayIcon(playing) {
     setIcon(npb, playing ? 'pause' : 'play');
     npb.classList.toggle('pausing', playing);
   }
+  const lpb = $('lyrics-play-ic');
+  if (lpb) setIcon(lpb, playing ? 'pause' : 'play');
 }
 /* 缓冲中：播放键变转圈 + 显示"缓冲中…" */
 function setBuffering(on) {
@@ -785,6 +787,9 @@ if (location.hash === '#lyrics') {
 $('lyrics-btn').onclick = () => setLyricsOpen($('lyrics-panel').hidden);
 $('lyrics-close').onclick = () => setLyricsOpen(false);
 $('lyrics-full').onclick = toggleLyricsFull;
+$('lyrics-prev').onclick = () => prevTrack();
+$('lyrics-next').onclick = () => nextTrack(false);
+$('lyrics-play').onclick = () => togglePlay();
 $('pb-open').onclick = openNowPlaying;
 $('np-close').onclick = closeNowPlaying;
 $('np-prev').onclick = () => prevTrack();
@@ -918,5 +923,8 @@ setIcon($('np-close-ic'), 'x');
 setIcon($('np-prev'), 'prev');
 setIcon($('np-next'), 'next');
 setIcon($('np-play'), 'play');
+setIcon($('lyrics-prev-ic'), 'prev');
+setIcon($('lyrics-next-ic'), 'next');
+setIcon($('lyrics-play-ic'), 'play');
 applyTheme();
 renderCharts();
