@@ -156,6 +156,20 @@
   </div>
 </div>
 
+<!-- 导入歌单 -->
+<div id="import-modal" class="modal" hidden>
+  <div class="modal-box">
+    <h3>📥 导入歌单</h3>
+    <p class="modal-desc">粘贴网易云 / Spotify / Apple Music / YouTube 的歌单链接，导入后会多一张歌单卡片。其他平台的歌会自动在网易云匹配对应歌曲。</p>
+    <input id="import-url" type="text" placeholder="https://music.163.com/#/playlist?id=…" autocomplete="off" style="width:100%;margin-bottom:8px">
+    <div class="modal-row">
+      <button id="import-btn" class="primary-btn">导入</button>
+      <button id="import-close" class="ghost-btn">取消</button>
+    </div>
+    <div id="import-msg" class="proxy-status"></div>
+  </div>
+</div>
+
 <div id="toast" class="toast" hidden></div>
 
 <audio id="audio" preload="auto"></audio>

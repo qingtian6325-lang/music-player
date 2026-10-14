@@ -263,6 +263,11 @@ let qIndex = -1;       // 当前下标
 let playMode = 0;      // 0 顺序 1 随机 2 单曲循环
 let favorites = [];
 try { favorites = JSON.parse(localStorage.getItem('mp_fav') || '[]'); } catch (e) {}
+let customPlaylists = [];
+try { customPlaylists = JSON.parse(localStorage.getItem('mp_playlists') || '[]'); } catch (e) {}
+function savePlaylists() {
+  try { localStorage.setItem('mp_playlists', JSON.stringify(customPlaylists)); } catch (e) {}
+}
 audio.volume = parseFloat(localStorage.getItem('mp_vol') || '0.8');
 $('vol-slider').value = Math.round(audio.volume * 100);
 
@@ -286,12 +291,44 @@ async function playTrack(index) {
   setAmbient(track.pic);
   if (!$('now-playing').hidden) syncNowPlaying(track);
 
+  // 导入歌单的曲目：先在网易云匹配对应歌曲
+  if (track._needMatch && !track._matched) {
+    try {
+      const d = await api({ types: 'search', source: 'netease', name: track._matchQuery, count: '5' });
+      const list = Array.isArray(d) ? d : [];
+      if (list.length) {
+        const s = list[0];
+        track.id = String(s.id);
+        track.source = s.source || 'netease';
+        track.pic_id = s.pic_id || '';
+        track.lyric_id = s.lyric_id ? String(s.lyric_id) : String(s.id);
+        track._matched = true;
+        // 更新行内 key，保证高亮和收藏正常
+        const rows = document.querySelectorAll('.track-row');
+        if (rows[index]) rows[index].dataset.key = trackKey(track);
+      } else {
+        toast(`《${track.name}》在网易云找不到，已跳过`);
+        setBuffering(false);
+        nextTrack();
+        return;
+      }
+    } catch (e) {
+      toast('匹配失败，已跳过');
+      setBuffering(false);
+      nextTrack();
+      return;
+    }
+    if (qIndex !== index) return;
+    markPlayingRow();
+  }
+
   // 解析最高可用音质地址
   const r = await resolveUrl(track.source, track.id);
   if (qIndex !== index) return; // 期间已切歌
   if (!r) {
-    toast('这首歌暂无可播放地址，换个音乐源试试');
+    toast('这首歌暂无可播放地址，已跳过');
     setBuffering(false);
+    nextTrack();
     return;
   }
   audio.src = audioSrc(r.url);
@@ -447,6 +484,29 @@ function renderCharts() {
     card.onclick = () => openChart(c);
     grid.appendChild(card);
   });
+  // 自定义导入的歌单
+  customPlaylists.forEach((p, pi) => {
+    const card = document.createElement('div');
+    card.className = 'chart-card';
+    card.innerHTML = `
+      <div class="chart-tile"><span>🎵</span></div>
+      <div class="chart-name">${escapeHtml(p.name)}</div>
+      <div class="chart-sub">${p.tracks.length}首 · 点击播放</div>`;
+    card.onclick = () => openCustomPlaylist(pi);
+    // 右键删除
+    card.oncontextmenu = (e) => { e.preventDefault(); delPlaylist(pi); };
+    grid.appendChild(card);
+  });
+  // + 导入按钮
+  const add = document.createElement('div');
+  add.className = 'chart-card chart-add';
+  add.innerHTML = `
+    <div class="chart-tile chart-add-tile"><span style="font-size:40px">＋</span></div>
+    <div class="chart-name">导入歌单</div>
+    <div class="chart-sub">粘贴链接添加</div>`;
+  add.onclick = () => openImportModal();
+  grid.appendChild(add);
+
   const side = $('side-charts');
   side.innerHTML = '';
   CHARTS.forEach((c) => {
@@ -456,6 +516,122 @@ function renderCharts() {
     b.onclick = () => openChart(c);
     side.appendChild(b);
   });
+  customPlaylists.forEach((p, pi) => {
+    const b = document.createElement('button');
+    b.className = 'side-chart-link';
+    b.innerHTML = `<span>🎵 ${escapeHtml(p.name)}</span><span>›</span>`;
+    b.onclick = () => openCustomPlaylist(pi);
+    side.appendChild(b);
+  });
+}
+
+function delPlaylist(pi) {
+  if (!confirm(`删除歌单「${customPlaylists[pi].name}」？`)) return;
+  customPlaylists.splice(pi, 1);
+  savePlaylists();
+  renderCharts();
+  toast('已删除');
+}
+
+async function openCustomPlaylist(pi) {
+  const p = customPlaylists[pi];
+  if (!p) return;
+  $('view-home').hidden = true;
+  $('view-list').hidden = false;
+  $('list-title').textContent = p.name;
+  // 网易云歌单：用存的 ID 重新拉（保证最新）
+  if (p.platform === 'netease' && p.playlistId) {
+    showListLoading(true);
+    $('track-list').innerHTML = '';
+    try {
+      const d = await api({ types: 'playlist', id: p.playlistId });
+      const tracks = (d.playlist.tracks || []).map((t) => ({
+        id: String(t.id),
+        name: t.name,
+        artist: (t.ar || []).map((a) => a.name),
+        album: (t.al || {}).name || '',
+        pic: (t.al || {}).picUrl || '',
+        lyric_id: String(t.id),
+        source: 'netease',
+        duration: t.dt ? Math.round(t.dt / 1000) : 0,
+      }));
+      showListLoading(false);
+      renderTrackList(tracks, p.name + `（${tracks.length}首）`);
+    } catch (e) {
+      showListLoading(false);
+      toast('歌单加载失败');
+    }
+    return;
+  }
+  // 其他平台：用导入时解析的曲目，播放时懒匹配网易云音源
+  const tracks = p.tracks.map((t, idx) => ({
+    id: `import-${pi}-${idx}`,
+    name: t.title,
+    artist: t.artist ? [t.artist] : [],
+    album: '',
+    pic: '',
+    lyric_id: '',
+    source: 'netease',
+    duration: 0,
+    _needMatch: true,
+    _matchQuery: (t.title + ' ' + (t.artist || '')).trim(),
+  }));
+  renderTrackList(tracks, p.name + `（${tracks.length}首）`);
+  if (tracks.length) toast('播放时会自动匹配网易云音源');
+}
+
+/* ---------- 导入歌单 ---------- */
+function openImportModal() {
+  $('import-modal').hidden = false;
+  $('import-msg').textContent = '';
+  $('import-url').value = '';
+  setTimeout(() => $('import-url').focus(), 50);
+}
+function closeImportModal() {
+  $('import-modal').hidden = true;
+}
+
+async function doImport() {
+  const url = $('import-url').value.trim();
+  if (!url) { $('import-msg').textContent = '请先粘贴歌单链接'; return; }
+  $('import-msg').textContent = '解析中…';
+  $('import-btn').disabled = true;
+  try {
+    // 网易云：直接解析 ID，前端调现有 API
+    const nm = url.match(/music\.163\.com.*[?&]id=(\d+)/);
+    if (nm) {
+      const d = await api({ types: 'playlist', id: nm[1] });
+      const pl = d.playlist || {};
+      if (!pl.tracks || !pl.tracks.length) throw new Error('歌单是空的');
+      customPlaylists.push({
+        name: pl.name || '网易云歌单',
+        platform: 'netease',
+        playlistId: nm[1],
+        tracks: [],
+        addedAt: Date.now(),
+      });
+    } else {
+      // 其他平台：走 Worker 解析
+      const proxy = proxyBase();
+      const pr = await fetchJson(proxy + '/parse-playlist?url=' + encodeURIComponent(url));
+      if (pr.error) throw new Error(pr.error);
+      if (!pr.tracks || !pr.tracks.length) throw new Error('没解析到曲目');
+      customPlaylists.push({
+        name: pr.name || '导入的歌单',
+        platform: pr.platform || 'other',
+        playlistId: '',
+        tracks: pr.tracks,
+        addedAt: Date.now(),
+      });
+    }
+    savePlaylists();
+    renderCharts();
+    closeImportModal();
+    toast('导入成功！首页多了一张歌单卡片');
+  } catch (e) {
+    $('import-msg').textContent = '导入失败：' + (e.message || e);
+  }
+  $('import-btn').disabled = false;
 }
 
 async function openChart(c) {
@@ -572,6 +748,10 @@ $('np-close').onclick = closeNowPlaying;
 $('np-prev').onclick = () => prevTrack();
 $('np-next').onclick = () => nextTrack(false);
 $('np-play').onclick = () => togglePlay();
+$('import-btn').onclick = doImport;
+$('import-close').onclick = closeImportModal;
+$('import-modal').addEventListener('click', (e) => { if (e.target.id === 'import-modal') closeImportModal(); });
+$('import-url').addEventListener('keydown', (e) => { if (e.key === 'Enter') doImport(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNowPlaying(); });
 
 audio.addEventListener('timeupdate', () => {

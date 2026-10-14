@@ -163,6 +163,13 @@ body.light .chart-card:nth-child(4n+3) .chart-tile { color: #e8590c; }
 body.light .chart-card:nth-child(4n+4) .chart-tile { color: #9c36b5; }
 .chart-card .chart-name { font-size: 15px; font-weight: 700; }
 .chart-card .chart-sub { font-size: 13px; color: var(--muted); margin-top: 5px; line-height: 1.45; }
+/* 导入歌单 + 按钮 */
+.chart-add-tile {
+  border: 2px dashed var(--line);
+  background: transparent !important;
+  color: var(--muted) !important;
+}
+.chart-add:hover .chart-add-tile { border-color: var(--accent); color: var(--accent) !important; }
 
 /* 曲目表 */
 .list-header { display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
