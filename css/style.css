@@ -486,3 +486,28 @@ body.light #player-bar { box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06); }
   .toast { bottom: 190px; }
   #api-credit { padding-bottom: 200px; }
 }
+
+/* ---------- 横屏/车机优化 ---------- */
+@media (orientation: landscape) and (min-width: 861px) {
+  /* 车机横屏：字体稍大，触控目标放大 */
+  .track-name { font-size: 16px; }
+  .track-sub { font-size: 14px; }
+  .track-row { padding: 12px 10px; min-height: 56px; }
+  .play-main { width: 52px; height: 52px; }
+  .icon-btn { width: 44px; height: 44px; }
+  .icon-btn.sm { width: 40px; height: 40px; }
+  .pb-controls { gap: 14px; }
+  /* 侧边栏收窄，给内容更多空间 */
+  #sidebar { width: 200px; }
+  .side-nav button { padding: 12px 14px; font-size: 15px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  /* 超矮横屏（如车机）：压缩纵向空间 */
+  #main { padding: 12px 16px; }
+  .section-title { font-size: 18px; margin-bottom: 10px; }
+  .chart-grid { grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .chart-card { padding: 10px; }
+  .chart-tile { margin-bottom: 8px; }
+  #player-bar { padding: 8px 16px; }
+  .lyrics-panel { width: min(420px, 38vw); }
+}
