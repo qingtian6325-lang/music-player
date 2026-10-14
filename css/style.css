@@ -517,25 +517,18 @@ body.light #player-bar { box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06); }
   left: 0; width: 100%; bottom: 0;
   z-index: 90;
   border-left: none;
-  background: transparent;
+  background: var(--bg);
 }
-.lyrics-panel.fullscreen::before {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.50));
-  pointer-events: none;
-}
-body.light .lyrics-panel.fullscreen::before {
-  background: linear-gradient(180deg, rgba(255,255,255,.35), rgba(255,255,255,.50));
-}
+.lyrics-panel.fullscreen::before { display: none; }
 .lyrics-panel.fullscreen .lyrics-head,
 .lyrics-panel.fullscreen .lyrics-body { position: relative; z-index: 1; }
 .lyrics-panel.fullscreen .lyrics-head { border-bottom-color: rgba(255,255,255,.12); background: transparent; }
 .lyrics-panel.fullscreen .lyrics-body { padding: 40px 8vw; }
-.lyrics-panel.fullscreen .lyric-line { font-size: 22px; padding: 14px 8px; text-shadow: 0 2px 12px rgba(0,0,0,.8); }
+.lyrics-panel.fullscreen .lyric-line { font-size: 22px; padding: 14px 8px; }
 .lyrics-panel.fullscreen .lyric-line .trans { font-size: 16px; }
-.lyrics-panel.fullscreen .lyric-line.active { font-size: 30px; text-shadow: 0 2px 20px rgba(0,0,0,.9), 0 0 30px rgba(29,185,84,.4); }
-.lyrics-panel.fullscreen .lyrics-title { font-size: 22px; text-shadow: 0 2px 12px rgba(0,0,0,.8); }
-.lyrics-panel.fullscreen .lyrics-artist { font-size: 16px; text-shadow: 0 1px 8px rgba(0,0,0,.8); }
+.lyrics-panel.fullscreen .lyric-line.active { font-size: 30px; }
+.lyrics-panel.fullscreen .lyrics-title { font-size: 22px; }
+.lyrics-panel.fullscreen .lyrics-artist { font-size: 16px; }
 #lyrics-full { flex-shrink: 0; }
 
 /* 歌词全屏时，小屏也显示环境光 */
