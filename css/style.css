@@ -517,8 +517,9 @@ body.light #player-bar { box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06); }
   left: 0; width: 100%; bottom: 0;
   z-index: 90;
   border-left: none;
-  background: var(--bg);
+  background: rgba(0,0,0,.78);
 }
+body.light .lyrics-panel.fullscreen { background: rgba(255,255,255,.82); }
 .lyrics-panel.fullscreen::before { display: none; }
 .lyrics-panel.fullscreen .lyrics-head,
 .lyrics-panel.fullscreen .lyrics-body { position: relative; z-index: 1; }
