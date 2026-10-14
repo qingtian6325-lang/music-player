@@ -513,13 +513,35 @@ body.light #player-bar { box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06); }
 }
 
 /* ---------- 歌词全屏 ---------- */
+.lyrics-ambient {
+  display: none;
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  filter: blur(60px) saturate(1.4);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.lyrics-ambient::after {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 50% 40%, transparent 20%, rgba(0,0,0,.45) 75%);
+  animation: lyricBreathe 4s ease-in-out infinite;
+}
+@keyframes lyricBreathe {
+  0%, 100% { opacity: 0.75; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+body.light .lyrics-ambient::after {
+  background: radial-gradient(ellipse at 50% 40%, transparent 20%, rgba(255,255,255,.5) 75%);
+}
 .lyrics-panel.fullscreen {
   left: 0; width: 100%; bottom: 0;
   z-index: 90;
   border-left: none;
-  background: rgba(0,0,0,.78);
+  background: #0a0a0a;
+  overflow: hidden;
 }
-body.light .lyrics-panel.fullscreen { background: rgba(255,255,255,.82); }
+body.light .lyrics-panel.fullscreen { background: #f5f5f7; }
+.lyrics-panel.fullscreen .lyrics-ambient { display: block; }
 .lyrics-panel.fullscreen::before { display: none; }
 .lyrics-panel.fullscreen .lyrics-head,
 .lyrics-panel.fullscreen .lyrics-body { position: relative; z-index: 1; }

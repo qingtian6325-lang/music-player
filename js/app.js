@@ -292,6 +292,7 @@ async function playTrack(index) {
   updatePlayerMeta(track, true);
   setBuffering(true);
   setAmbient(track.pic);
+  if (!$('lyrics-panel').hidden && $('lyrics-panel').classList.contains('fullscreen')) syncLyricsAmbient();
   if (!$('now-playing').hidden) syncNowPlaying(track);
 
   // 导入歌单的曲目：先在网易云匹配对应歌曲
@@ -761,14 +762,14 @@ function toggleLyricsFull() {
   const fs = p.classList.contains('fullscreen');
   document.body.classList.toggle('lyrics-fs', fs);
   setIcon($('lyrics-full-ic'), fs ? 'compress' : 'expand');
-  // 全屏时强制开环境光，退出时恢复
-  if (fs) {
-    const t = currentTrack();
-    if (t && t.pic) setAmbient(t.pic, true);
-  } else {
-    const t = currentTrack();
-    setAmbient(t ? t.pic : '');
-  }
+  if (fs) syncLyricsAmbient();
+}
+function syncLyricsAmbient() {
+  const t = currentTrack();
+  const el = $('lyrics-ambient');
+  if (!el) return;
+  const pic = t && t.pic ? imgSrc(t.pic) : '';
+  el.style.backgroundImage = pic ? `url("${pic.replace(/"/g, '')}")` : '';
 }
 function openLyricsPage() {
   if (!currentTrack()) { toast('先播一首歌吧'); return; }
