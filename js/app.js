@@ -105,6 +105,8 @@ const ICONS = {
   volume: SVG_OPEN + '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>' + SVG_END,
   chevL: SVG_OPEN + '<polyline points="15 18 9 12 15 6"/>' + SVG_END,
   x: SVG_OPEN + '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>' + SVG_END,
+  expand: SVG_OPEN + '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>' + SVG_END,
+  compress: SVG_OPEN + '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>' + SVG_END,
 };
 function setIcon(el, name) { if (el) el.innerHTML = ICONS[name]; }
 function setPlayIcon(playing) {
@@ -742,9 +744,17 @@ function setLyricsOpen(open) {
   $('lyrics-panel').hidden = !open;
   $('lyrics-btn').classList.toggle('active', open);
   if (open) syncLyric();
+  else $('lyrics-panel').classList.remove('fullscreen');
+}
+function toggleLyricsFull() {
+  const p = $('lyrics-panel');
+  p.classList.toggle('fullscreen');
+  const fs = p.classList.contains('fullscreen');
+  setIcon($('lyrics-full-ic'), fs ? 'compress' : 'expand');
 }
 $('lyrics-btn').onclick = () => setLyricsOpen($('lyrics-panel').hidden);
 $('lyrics-close').onclick = () => setLyricsOpen(false);
+$('lyrics-full').onclick = toggleLyricsFull;
 $('pb-open').onclick = openNowPlaying;
 $('np-close').onclick = closeNowPlaying;
 $('np-prev').onclick = () => prevTrack();
@@ -858,6 +868,7 @@ setIcon($('nav-fav-ic'), 'heart');
 setIcon($('settings-ic'), 'gear');
 setIcon($('back-ic'), 'chevL');
 setIcon($('lyrics-close-ic'), 'x');
+setIcon($('lyrics-full-ic'), 'expand');
 setPlayIcon(false);
 setIcon($('prev-btn'), 'prev');
 setIcon($('next-btn'), 'next');

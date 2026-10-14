@@ -511,3 +511,17 @@ body.light #player-bar { box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06); }
   #player-bar { padding: 8px 16px; }
   .lyrics-panel { width: min(420px, 38vw); }
 }
+
+/* ---------- 歌词全屏 ---------- */
+.lyrics-panel.fullscreen {
+  left: 0; width: 100%; bottom: 0;
+  z-index: 90;
+  border-left: none;
+}
+.lyrics-panel.fullscreen .lyrics-body { padding: 40px 8vw; }
+.lyrics-panel.fullscreen .lyric-line { font-size: 22px; padding: 14px 8px; }
+.lyrics-panel.fullscreen .lyric-line .trans { font-size: 16px; }
+.lyrics-panel.fullscreen .lyric-line.active { font-size: 30px; }
+.lyrics-panel.fullscreen .lyrics-title { font-size: 22px; }
+.lyrics-panel.fullscreen .lyrics-artist { font-size: 16px; }
+#lyrics-full { flex-shrink: 0; }
