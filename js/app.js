@@ -194,7 +194,7 @@ let lyricLines = [];
 let lyricDelayMs = parseInt(localStorage.getItem('mp_lyric_delay') || '500', 10) || 0;
 function syncLyric() {
   if (!lyricLines.length || $('lyrics-panel').hidden) return;
-  const t = audio.currentTime - lyricDelayMs / 1000;
+  const t = audio.currentTime + lyricDelayMs / 1000;
   let idx = 0;
   for (let i = 0; i < lyricLines.length; i++) {
     if (lyricLines[i].t <= t + 0.15) idx = i; else break;
