@@ -191,9 +191,10 @@ function escapeHtml(s) {
 }
 
 let lyricLines = [];
+let lyricDelayMs = parseInt(localStorage.getItem('mp_lyric_delay') || '500', 10) || 0;
 function syncLyric() {
   if (!lyricLines.length || $('lyrics-panel').hidden) return;
-  const t = audio.currentTime;
+  const t = audio.currentTime - lyricDelayMs / 1000;
   let idx = 0;
   for (let i = 0; i < lyricLines.length; i++) {
     if (lyricLines[i].t <= t + 0.15) idx = i; else break;
@@ -722,6 +723,7 @@ $('search-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') do
 $('nav-home').onclick = showHome;
 $('logo-home').onclick = showHome;
 $('nav-fav').onclick = showFav;
+$('nav-lyrics').onclick = openLyricsPage;
 $('back-home').onclick = showHome;
 
 $('play-btn').onclick = togglePlay;
@@ -747,6 +749,10 @@ function setLyricsOpen(open) {
   else {
     $('lyrics-panel').classList.remove('fullscreen');
     document.body.classList.remove('lyrics-fs');
+    setIcon($('lyrics-full-ic'), 'expand');
+    if (location.hash === '#lyrics') {
+      try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    }
   }
 }
 function toggleLyricsFull() {
@@ -763,6 +769,17 @@ function toggleLyricsFull() {
     const t = currentTrack();
     setAmbient(t ? t.pic : '');
   }
+}
+function openLyricsPage() {
+  if (!currentTrack()) { toast('先播一首歌吧'); return; }
+  setLyricsOpen(true);
+  const p = $('lyrics-panel');
+  if (!p.classList.contains('fullscreen')) toggleLyricsFull();
+  try { history.replaceState(null, '', '#lyrics'); } catch (e) {}
+}
+// 支持 #lyrics 直接进全屏歌词
+if (location.hash === '#lyrics') {
+  setTimeout(() => { if (currentTrack()) openLyricsPage(); }, 800);
 }
 $('lyrics-btn').onclick = () => setLyricsOpen($('lyrics-panel').hidden);
 $('lyrics-close').onclick = () => setLyricsOpen(false);
@@ -829,8 +846,15 @@ document.addEventListener('keydown', (e) => {
 function openSettings() {
   $('proxy-input').value = localStorage.getItem('mp_proxy') || '';
   $('proxy-status').textContent = '';
+  $('lyric-delay').value = String(lyricDelayMs);
+  $('lyric-delay-val').textContent = lyricDelayMs + 'ms';
   $('settings-modal').hidden = false;
 }
+$('lyric-delay').oninput = () => {
+  lyricDelayMs = parseInt($('lyric-delay').value, 10) || 0;
+  $('lyric-delay-val').textContent = lyricDelayMs + 'ms';
+  try { localStorage.setItem('mp_lyric_delay', String(lyricDelayMs)); } catch (e) {}
+};
 $('settings-btn').onclick = openSettings;
 $('proxy-close').onclick = () => ($('settings-modal').hidden = true);
 $('settings-modal').addEventListener('click', (e) => {
@@ -877,6 +901,7 @@ $('logo-home').addEventListener('click', () => {
 setIcon($('logo-icon'), 'music');
 setIcon($('nav-home-ic'), 'home');
 setIcon($('nav-fav-ic'), 'heart');
+setIcon($('nav-lyrics-ic'), 'mic');
 setIcon($('settings-ic'), 'gear');
 setIcon($('back-ic'), 'chevL');
 setIcon($('lyrics-close-ic'), 'x');
