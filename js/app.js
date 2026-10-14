@@ -488,10 +488,11 @@ function renderCharts() {
   customPlaylists.forEach((p, pi) => {
     const card = document.createElement('div');
     card.className = 'chart-card';
+    const count = p.trackCount || p.tracks.length;
     card.innerHTML = `
       <div class="chart-tile"><span>🎵</span></div>
       <div class="chart-name">${escapeHtml(p.name)}</div>
-      <div class="chart-sub">${p.tracks.length}首 · 点击播放</div>`;
+      <div class="chart-sub">${count}首 · 点击播放</div>`;
     card.onclick = () => openCustomPlaylist(pi);
     // 右键删除
     card.oncontextmenu = (e) => { e.preventDefault(); delPlaylist(pi); };
@@ -608,6 +609,7 @@ async function doImport() {
         platform: 'netease',
         playlistId: nm[1],
         tracks: [],
+        trackCount: pl.tracks.length,
         addedAt: Date.now(),
       });
     } else {
