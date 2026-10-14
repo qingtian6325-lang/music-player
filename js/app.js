@@ -401,6 +401,9 @@ function updatePlayerMeta(track, loading) {
       navigator.mediaSession.setActionHandler('pause', () => togglePlay());
       navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
       navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack(false));
+      // 关掉快退/快进，让 iOS 显示上一首/下一首
+      try { navigator.mediaSession.setActionHandler('seekbackward', null); } catch (e) {}
+      try { navigator.mediaSession.setActionHandler('seekforward', null); } catch (e) {}
     }
   } catch (e) { /* 忽略 */ }
 }
