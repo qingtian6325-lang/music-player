@@ -382,6 +382,11 @@ function updatePlayerMeta(track, loading) {
   $('pb-artist').textContent = track.artist.join(' / ') + (loading ? '（加载中…）' : '');
   $('lyrics-title').textContent = track.name;
   $('lyrics-artist').textContent = track.artist.join(' / ');
+  const lc = $('lyrics-cover');
+  if (lc) {
+    if (pic) { lc.src = pic; lc.style.display = 'block'; }
+    else { lc.removeAttribute('src'); lc.style.display = 'none'; }
+  }
   updateFavBtn();
   document.title = `${track.name} - ${track.artist.join('/')} | 音乐播放器`;
   // iOS 系统播放器 / 锁屏封面

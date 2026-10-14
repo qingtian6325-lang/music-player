@@ -549,12 +549,16 @@ body.light .lyrics-panel.fullscreen { background: #f5f5f7; }
 .lyrics-panel.fullscreen .lyrics-body { padding: 40px 8vw; }
 .lyrics-controls { display: none; }
 .lyrics-panel.fullscreen .lyrics-head { position: relative; }
+.lyrics-panel.fullscreen .lyrics-cover {
+  display: block; width: 56px; height: 56px; border-radius: 10px;
+  object-fit: cover; flex-shrink: 0;
+}
+.lyrics-cover { display: none; }
 .lyrics-panel.fullscreen .lyrics-controls {
   display: flex; align-items: center; justify-content: center; gap: 20px;
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   z-index: 2;
 }
-.lyrics-panel.fullscreen .lyrics-meta { visibility: hidden; }
 .lyrics-panel.fullscreen .lyrics-controls .icon-btn { color: rgba(255,255,255,.85); }
 .lyrics-panel.fullscreen .lyrics-controls .icon-btn svg { width: 26px; height: 26px; }
 body.light .lyrics-panel.fullscreen .lyrics-controls .icon-btn { color: rgba(0,0,0,.66); }
