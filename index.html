@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>音乐播放器</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=20261014n">
+<link rel="stylesheet" href="css/style.css?v=20261014o">
 </head>
 <body>
 
@@ -80,16 +80,16 @@
       <div id="lyrics-title" class="lyrics-title">—</div>
       <div id="lyrics-artist" class="lyrics-artist">—</div>
     </div>
+    <div class="lyrics-controls">
+      <button id="lyrics-prev" class="icon-btn" title="上一首"><span class="btn-ic" id="lyrics-prev-ic"></span></button>
+      <button id="lyrics-play" class="play-main" title="播放/暂停"><span class="btn-ic" id="lyrics-play-ic"></span></button>
+      <button id="lyrics-next" class="icon-btn" title="下一首"><span class="btn-ic" id="lyrics-next-ic"></span></button>
+    </div>
     <button id="lyrics-full" class="ghost-btn icon-only" title="全屏"><span class="btn-ic" id="lyrics-full-ic"></span></button>
     <button id="lyrics-close" class="ghost-btn icon-only" title="关闭"><span class="btn-ic" id="lyrics-close-ic"></span></button>
   </div>
   <div id="lyrics-body" class="lyrics-body">
     <div class="lyrics-empty">暂无歌词</div>
-  </div>
-  <div class="lyrics-controls">
-    <button id="lyrics-prev" class="ghost-btn icon-only lyric-ctrl" title="上一首"><span class="btn-ic" id="lyrics-prev-ic"></span></button>
-    <button id="lyrics-play" class="ghost-btn icon-only lyric-ctrl lyric-ctrl-main" title="播放/暂停"><span class="btn-ic" id="lyrics-play-ic"></span></button>
-    <button id="lyrics-next" class="ghost-btn icon-only lyric-ctrl" title="下一首"><span class="btn-ic" id="lyrics-next-ic"></span></button>
   </div>
 </div>
 
@@ -188,6 +188,6 @@
 <div id="toast" class="toast" hidden></div>
 
 <audio id="audio" preload="auto"></audio>
-<script src="js/app.js?v=20261014n"></script>
+<script src="js/app.js?v=20261014o"></script>
 </body>
 </html>

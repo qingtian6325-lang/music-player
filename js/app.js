@@ -118,7 +118,11 @@ function setPlayIcon(playing) {
     npb.classList.toggle('pausing', playing);
   }
   const lpb = $('lyrics-play-ic');
-  if (lpb) setIcon(lpb, playing ? 'pause' : 'play');
+  if (lpb) {
+    setIcon(lpb, playing ? 'pause' : 'play');
+    const lbtn = $('lyrics-play');
+    if (lbtn) lbtn.classList.toggle('pausing', playing);
+  }
 }
 /* 缓冲中：播放键变转圈 + 显示"缓冲中…" */
 function setBuffering(on) {
