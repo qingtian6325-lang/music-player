@@ -191,7 +191,7 @@ function escapeHtml(s) {
 }
 
 let lyricLines = [];
-let lyricDelayMs = parseInt(localStorage.getItem('mp_lyric_delay') || '500', 10) || 0;
+let lyricDelayMs = parseInt(localStorage.getItem('mp_lyric_delay') || '520', 10) || 0;
 function syncLyric() {
   if (!lyricLines.length || $('lyrics-panel').hidden) return;
   const t = audio.currentTime + lyricDelayMs / 1000;
