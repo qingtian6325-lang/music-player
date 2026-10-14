@@ -213,10 +213,10 @@ function syncLyric() {
 /* ---------- 全屏环境光（仅电脑端） ---------- */
 let ambientToken = 0;
 let ambientSlide = 0;
-async function setAmbient(picUrl) {
+async function setAmbient(picUrl, force) {
   const amb = $('ambient');
   if (!amb) return;
-  if (!picUrl || window.innerWidth <= 860) { amb.classList.remove('on'); return; }
+  if (!picUrl || (window.innerWidth <= 860 && !force)) { amb.classList.remove('on'); return; }
   const my = ++ambientToken;
   const url = imgSrc(picUrl);
   const pre = new Image();
@@ -744,13 +744,25 @@ function setLyricsOpen(open) {
   $('lyrics-panel').hidden = !open;
   $('lyrics-btn').classList.toggle('active', open);
   if (open) syncLyric();
-  else $('lyrics-panel').classList.remove('fullscreen');
+  else {
+    $('lyrics-panel').classList.remove('fullscreen');
+    document.body.classList.remove('lyrics-fs');
+  }
 }
 function toggleLyricsFull() {
   const p = $('lyrics-panel');
   p.classList.toggle('fullscreen');
   const fs = p.classList.contains('fullscreen');
+  document.body.classList.toggle('lyrics-fs', fs);
   setIcon($('lyrics-full-ic'), fs ? 'compress' : 'expand');
+  // 全屏时强制开环境光，退出时恢复
+  if (fs) {
+    const t = currentTrack();
+    if (t && t.pic) setAmbient(t.pic, true);
+  } else {
+    const t = currentTrack();
+    setAmbient(t ? t.pic : '');
+  }
 }
 $('lyrics-btn').onclick = () => setLyricsOpen($('lyrics-panel').hidden);
 $('lyrics-close').onclick = () => setLyricsOpen(false);
