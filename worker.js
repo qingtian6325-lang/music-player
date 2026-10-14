@@ -192,32 +192,47 @@ async function parseSpotifyPlaylist(pid) {
 }
 
 async function parseYTPlaylist(pageUrl) {
-  // 抓取 YouTube 歌单页面的初始数据
-  const r = await fetch(pageUrl, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+  // 从 URL 提取 playlist ID
+  const m = pageUrl.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+  if (!m) throw new Error('链接里没有找到歌单 ID');
+  const listId = m[1];
+  // 用 YouTube 内部 API 拿曲目（页面是 JS 空壳，直接抓没数据）
+  const apiKey = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+  const r = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    },
+    body: JSON.stringify({
+      context: { client: { clientName: 'WEB', clientVersion: '2.20240101.00.00' } },
+      browseId: 'VL' + listId,
+    }),
   });
-  const html = await r.text();
+  const d = await r.json();
   let name = 'YouTube 歌单';
-  const nm = html.match(/"title":"([^"]{1,120})","subtitle"/) || html.match(/<title>([^<]{1,120}) - YouTube<\/title>/);
-  if (nm) name = nm[1].replace(/\\u([\da-f]{4})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
-  // 提取 videoId + title
+  try { name = d.metadata.playlistMetadataRenderer.title || name; } catch (e) {}
   const tracks = [];
-  const seen = new Set();
-  const re = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
-  let mm;
-  while ((mm = re.exec(html)) && tracks.length < 200) {
-    const vid = mm[1];
-    if (seen.has(vid)) continue;
-    seen.add(vid);
-    // 在附近找标题
-    const ctx = html.slice(Math.max(0, mm.index - 200), mm.index + 600);
-    const tm = ctx.match(/"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.){1,150})"/);
-    let title = '';
-    if (tm) {
-      title = tm[1].replace(/\\u([\da-f]{4})/gi, (_, h) => String.fromCharCode(parseInt(h, 16))).replace(/\\"/g, '"');
+  try {
+    const sections = d.contents.twoColumnBrowseResultsRenderer.tabs[0]
+      .tabRenderer.content.sectionListRenderer.contents;
+    for (const sec of sections) {
+      const items = (((sec || {}).itemSectionRenderer || {}).contents) || [];
+      for (const it of items) {
+        const vm = it.lockupViewModel;
+        if (!vm) continue;
+        const md = ((vm.metadata || {}).lockupMetadataViewModel) || {};
+        const title = (md.title || {}).content || '';
+        // 从缩略图 URL 提取 videoId
+        const thumbJson = JSON.stringify(vm.contentImage || {});
+        const vm2 = thumbJson.match(/\/vi\/([a-zA-Z0-9_-]{11})\//);
+        const vid = vm2 ? vm2[1] : '';
+        if (title) tracks.push({ title, artist: '', youtubeId: vid });
+        if (tracks.length >= 200) break;
+      }
+      if (tracks.length >= 200) break;
     }
-    tracks.push({ title: title || vid, artist: '', youtubeId: vid });
-  }
-  if (!tracks.length) throw new Error('没找到曲目，可能是私密歌单');
+  } catch (e) { /* 解析失败 */ }
+  if (!tracks.length) throw new Error('没找到曲目，可能是私密歌单或地区限制');
   return { name, tracks, platform: 'youtube' };
 }
