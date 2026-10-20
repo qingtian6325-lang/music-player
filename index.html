@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>音乐播放器</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=20261014r">
+<link rel="stylesheet" href="css/style.css?v=20261020r">
 </head>
 <body>
 
@@ -26,8 +26,13 @@
   <aside id="sidebar">
     <div class="side-card">
       <div class="logo" id="logo-home"><span class="logo-icon" id="logo-icon"></span>音乐播放器</div>
+      
+      <!-- 搜索栏及搜索历史/热门推荐 -->
       <div class="search-box">
-        <input id="search-input" type="text" placeholder="搜索歌曲 / 歌手 / 专辑…" autocomplete="off">
+        <div class="search-input-wrap">
+          <input id="search-input" type="text" placeholder="搜索歌曲 / 歌手 / 专辑…" autocomplete="off">
+          <button id="search-clear-btn" class="search-clear-btn" title="清空输入" hidden>&times;</button>
+        </div>
         <div class="search-row">
           <select id="source-select" title="音乐源">
             <option value="netease" selected>网易云</option>
@@ -36,17 +41,43 @@
           </select>
           <button id="search-btn">搜索</button>
         </div>
+        <!-- 搜索历史与热搜标签 -->
+        <div id="search-tags-box" class="search-tags-box">
+          <div class="search-tags-section" id="search-history-section" hidden>
+            <div class="tags-header">
+              <span>搜索历史</span>
+              <button id="clear-history-btn" class="text-btn">清空</button>
+            </div>
+            <div id="search-history-tags" class="tags-container"></div>
+          </div>
+          <div class="search-tags-section">
+            <div class="tags-header">
+              <span>热门推荐</span>
+            </div>
+            <div id="hot-search-tags" class="tags-container"></div>
+          </div>
+        </div>
       </div>
+
       <nav class="side-nav">
         <button id="nav-home" class="active"><span class="nav-ic" id="nav-home-ic"></span>首页</button>
         <button id="nav-fav"><span class="nav-ic" id="nav-fav-ic"></span>收藏</button>
+        <button id="nav-queue"><span class="nav-ic" id="nav-queue-ic"></span>播放队列<span id="nav-queue-badge" class="side-badge">0</span></button>
         <button id="nav-lyrics"><span class="nav-ic" id="nav-lyrics-ic"></span>全屏歌词</button>
+        <button id="eq-btn"><span class="nav-ic" id="eq-ic"></span>音效 & 均衡器</button>
+        <button id="sleep-btn"><span class="nav-ic" id="sleep-ic"></span>定时关闭<span id="sleep-side-badge" class="side-badge timer-badge" hidden></span></button>
         <button id="theme-btn"><span class="nav-ic" id="theme-ic"></span><span id="theme-label">浅色模式</span></button>
         <button id="settings-btn"><span class="nav-ic" id="settings-ic"></span>设置</button>
       </nav>
     </div>
+
     <div class="side-card lib-card">
-      <div class="side-label">榜单</div>
+      <div class="side-label-row">
+        <span class="side-label">我的歌单 & 榜单</span>
+        <button id="create-playlist-btn" class="side-action-btn" title="新建歌单">＋ 新建</button>
+      </div>
+      <div id="side-custom-playlists"></div>
+      <div class="side-label" style="margin-top:12px">官方热门榜</div>
       <div id="side-charts"></div>
     </div>
   </aside>
@@ -54,27 +85,44 @@
   <div class="content">
     <main id="main">
       <section id="view-home">
-        <h2 class="section-title">热门榜单</h2>
+        <div class="home-section-header">
+          <h2 class="section-title">我的自建歌单</h2>
+          <button id="home-create-pl-btn" class="ghost-btn sm">＋ 新建歌单</button>
+        </div>
+        <div id="custom-playlist-grid" class="chart-grid custom-grid"></div>
+
+        <h2 class="section-title" style="margin-top:32px">热门榜单</h2>
         <div id="chart-grid" class="chart-grid"></div>
       </section>
 
       <section id="view-list" hidden>
         <div class="list-header">
           <button id="back-home" class="ghost-btn"><span class="btn-ic" id="back-ic"></span>返回</button>
-          <h2 id="list-title" class="section-title"></h2>
+          <div class="list-title-wrap">
+            <h2 id="list-title" class="section-title"></h2>
+            <span id="list-subtitle" class="list-subtitle"></span>
+          </div>
+          <div class="list-header-actions">
+            <button id="play-all-btn" class="primary-btn"><span class="btn-ic" id="play-all-ic"></span>播放全部</button>
+            <button id="list-add-queue-btn" class="ghost-btn"><span class="btn-ic" id="list-queue-ic"></span>添加全部到队列</button>
+          </div>
         </div>
         <div id="track-list" class="track-list"></div>
-        <div id="list-loading" class="loading" hidden>加载中…</div>
+        <div id="list-loading" class="loading" hidden><span class="spinner"></span> 正在加载歌曲…</div>
         <div id="list-empty" class="empty" hidden>没有找到相关歌曲，换个关键词试试</div>
+        <div id="load-more-wrap" class="load-more-wrap" hidden>
+          <button id="load-more-btn" class="ghost-btn"><span class="btn-ic" id="load-more-ic"></span>加载更多歌曲</button>
+        </div>
       </section>
     </main>
     <div id="api-credit">音乐数据接口：GD音乐台 (music.gdstudio.xyz) · CC BY-NC 4.0 · 本站仅供学习交流，请勿商用</div>
   </div>
 </div>
 
-<!-- 歌词面板 -->
+<!-- 歌词面板（侧边抽屉 / 全屏） -->
 <div id="lyrics-panel" class="lyrics-panel" hidden>
   <div id="lyrics-ambient" class="lyrics-ambient"></div>
+  <canvas id="lyrics-visualizer" class="panel-visualizer"></canvas>
   <div class="lyrics-head">
     <img id="lyrics-cover" class="lyrics-cover" alt="">
     <div class="lyrics-meta">
@@ -86,18 +134,25 @@
       <button id="lyrics-play" class="play-main" title="播放/暂停"><span class="btn-ic" id="lyrics-play-ic"></span></button>
       <button id="lyrics-next" class="icon-btn" title="下一首"><span class="btn-ic" id="lyrics-next-ic"></span></button>
     </div>
-    <button id="lyrics-full" class="ghost-btn icon-only" title="全屏"><span class="btn-ic" id="lyrics-full-ic"></span></button>
-    <button id="lyrics-close" class="ghost-btn icon-only" title="关闭"><span class="btn-ic" id="lyrics-close-ic"></span></button>
+    <div class="lyrics-tools">
+      <button id="lyrics-font-dec" class="ghost-btn icon-only sm" title="缩小歌词">A-</button>
+      <button id="lyrics-font-inc" class="ghost-btn icon-only sm" title="放大歌词">A+</button>
+      <button id="lyrics-copy" class="ghost-btn icon-only" title="复制歌词"><span class="btn-ic" id="lyrics-copy-ic"></span></button>
+      <button id="lyrics-pip" class="ghost-btn icon-only" title="画中画悬浮歌词"><span class="btn-ic" id="lyrics-pip-ic"></span></button>
+      <button id="lyrics-full" class="ghost-btn icon-only" title="全屏切换"><span class="btn-ic" id="lyrics-full-ic"></span></button>
+      <button id="lyrics-close" class="ghost-btn icon-only" title="关闭"><span class="btn-ic" id="lyrics-close-ic"></span></button>
+    </div>
   </div>
   <div id="lyrics-body" class="lyrics-body">
     <div class="lyrics-empty">暂无歌词</div>
   </div>
 </div>
 
-<!-- 正在播放全屏 -->
+<!-- 正在播放全屏界面 -->
 <div id="now-playing" class="now-playing" hidden>
   <div class="np-bg" id="np-bg"></div>
   <div class="np-dim"></div>
+  <canvas id="np-visualizer" class="np-visualizer"></canvas>
   <button id="np-close" class="np-close" title="关闭"><span class="btn-ic" id="np-close-ic"></span></button>
   <div class="np-center">
     <div class="np-cover-wrap">
@@ -107,17 +162,46 @@
     <div class="np-title" id="np-title">—</div>
     <div class="np-artist" id="np-artist">—</div>
     <div class="np-controls">
+      <button id="np-mode" class="icon-btn" title="播放模式"></button>
       <button id="np-prev" class="icon-btn" title="上一首"></button>
       <button id="np-play" class="play-main" title="播放/暂停"></button>
       <button id="np-next" class="icon-btn" title="下一首"></button>
+      <button id="np-lyrics-btn" class="icon-btn" title="查看歌词"></button>
     </div>
   </div>
+</div>
+
+<!-- 播放队列抽屉 -->
+<div id="queue-mask" class="queue-mask" hidden></div>
+<aside id="queue-drawer" class="queue-drawer" hidden>
+  <div class="drawer-head">
+    <div class="drawer-title-wrap">
+      <h3>当前播放队列</h3>
+      <span id="queue-count-badge" class="drawer-sub">共 0 首</span>
+    </div>
+    <div class="drawer-actions">
+      <button id="queue-clear-btn" class="ghost-btn sm">清空队列</button>
+      <button id="queue-close-btn" class="ghost-btn icon-only" title="关闭队列"><span class="btn-ic" id="queue-close-ic"></span></button>
+    </div>
+  </div>
+  <div id="queue-track-list" class="queue-track-list"></div>
+  <div id="queue-empty" class="queue-empty" hidden>队列空空如也，去搜首歌或点开歌单吧</div>
+</aside>
+
+<!-- 歌曲操作浮层菜单 -->
+<div id="track-menu" class="track-menu" hidden>
+  <button class="track-menu-item" data-action="play"><span class="menu-ic" id="menu-play-ic"></span>立即播放</button>
+  <button class="track-menu-item" data-action="next"><span class="menu-ic" id="menu-next-ic"></span>下一首播放</button>
+  <button class="track-menu-item" data-action="add-queue"><span class="menu-ic" id="menu-queue-ic"></span>加入待播队列</button>
+  <button class="track-menu-item" data-action="add-playlist"><span class="menu-ic" id="menu-playlist-ic"></span>加入歌单…</button>
+  <button class="track-menu-item" data-action="download"><span class="menu-ic" id="menu-download-ic"></span>下载当前音频</button>
+  <button class="track-menu-item" data-action="copy"><span class="menu-ic" id="menu-copy-ic"></span>复制歌曲信息</button>
 </div>
 
 <!-- 底部播放条 -->
 <footer id="player-bar">
   <div class="pb-left">
-    <div class="pb-tile-wrap" id="pb-open" title="正在播放">
+    <div class="pb-tile-wrap" id="pb-open" title="点击放大正在播放">
       <div class="pb-glow" id="pb-glow"></div>
       <div class="pb-tile" id="pb-tile">♪</div>
     </div>
@@ -125,8 +209,10 @@
       <div id="pb-title" class="pb-title">还没有播放歌曲</div>
       <div id="pb-artist" class="pb-artist">搜一首歌或点开榜单开始吧</div>
     </div>
-    <button id="fav-btn" class="icon-btn" title="收藏" aria-label="收藏"></button>
+    <button id="fav-btn" class="icon-btn" title="收藏歌曲" aria-label="收藏"></button>
+    <button id="pb-more-btn" class="icon-btn sm" title="更多歌曲操作" aria-label="更多操作"><span class="btn-ic" id="pb-more-ic"></span></button>
   </div>
+  
   <div class="pb-center">
     <div class="pb-controls">
       <button id="mode-btn" class="icon-btn sm" title="播放模式：顺序" aria-label="播放模式"></button>
@@ -134,61 +220,240 @@
       <button id="play-btn" class="play-main" title="播放/暂停" aria-label="播放暂停"></button>
       <button id="next-btn" class="icon-btn sm" title="下一首" aria-label="下一首"></button>
       <button id="lyrics-btn" class="icon-btn sm" title="歌词" aria-label="歌词"></button>
+      <span id="sleep-bar-badge" class="sleep-bar-badge" hidden title="定时关闭生效中">⏱️ <span id="sleep-bar-time">30:00</span></span>
     </div>
     <div class="pb-progress">
       <span id="buffer-hint" class="buffer-hint" hidden>缓冲中…</span>
       <span id="time-cur">0:00</span>
-      <div id="progress-wrap" class="progress-wrap"><div id="progress-fill" class="progress-fill"></div></div>
+      <div id="progress-wrap" class="progress-wrap">
+        <div id="progress-fill" class="progress-fill"></div>
+        <div id="progress-tooltip" class="progress-tooltip" hidden>0:00</div>
+      </div>
       <span id="time-total">0:00</span>
     </div>
   </div>
+
   <div class="pb-right">
+    <button id="pb-eq-btn" class="icon-btn sm" title="音效 & 均衡器" aria-label="均衡器"><span class="btn-ic" id="pb-eq-ic"></span></button>
+    <button id="pb-pip-btn" class="icon-btn sm" title="画中画桌面悬浮歌词" aria-label="悬浮歌词"><span class="btn-ic" id="pb-pip-ic"></span></button>
+    <button id="pb-queue-btn" class="icon-btn sm" title="播放队列" aria-label="播放队列">
+      <span class="btn-ic" id="pb-queue-ic"></span>
+      <span id="pb-queue-badge" class="queue-badge-count" hidden>0</span>
+    </button>
     <span id="quality-badge" class="quality-badge" hidden></span>
-    <span class="vol-icon" id="vol-ic"></span>
-    <input id="vol-slider" type="range" min="0" max="100" value="80">
+    <button id="vol-btn" class="icon-btn sm" title="静音 / 恢复音量"><span class="vol-icon" id="vol-ic"></span></button>
+    <input id="vol-slider" type="range" min="0" max="100" value="80" title="音量调节">
   </div>
 </footer>
 
-<!-- 设置 -->
-<div id="settings-modal" class="modal" hidden>
-  <div class="modal-box">
-    <h3>设置</h3>
-    <p class="modal-desc">本站默认使用公共中转（disablecdnblock.qingtian6325.workers.dev），点开即听，公司网络也能用。你也可以填自己的 Worker 地址覆盖它；清空则恢复默认中转。</p>
-    <input id="proxy-input" type="text" placeholder="https://你的worker.workers.dev">
-    <div class="modal-row">
-      <button id="proxy-test" class="ghost-btn">测试连接</button>
-      <button id="proxy-save" class="primary-btn">保存</button>
-      <button id="proxy-clear" class="ghost-btn">清除</button>
-      <button id="proxy-close" class="ghost-btn">关闭</button>
+<!-- 移动端底部便携导航条 -->
+<div id="mobile-nav" class="mobile-nav">
+  <button id="mnav-home" class="active"><span class="mnav-ic" id="mnav-home-ic"></span>首页</button>
+  <button id="mnav-search"><span class="mnav-ic" id="mnav-search-ic"></span>搜索</button>
+  <button id="mnav-fav"><span class="mnav-ic" id="mnav-fav-ic"></span>收藏</button>
+  <button id="mnav-queue"><span class="mnav-ic" id="mnav-queue-ic"></span>队列<span id="mnav-queue-badge" class="mnav-badge" hidden>0</span></button>
+  <button id="mnav-more"><span class="mnav-ic" id="mnav-more-ic"></span>更多</button>
+</div>
+
+<!-- 音效 & 均衡器弹窗 -->
+<div id="eq-modal" class="modal" hidden>
+  <div class="modal-box eq-modal-box">
+    <div class="modal-head">
+      <h3>🎚️ 音效与均衡器 (Equalizer)</h3>
+      <button id="eq-close" class="ghost-btn icon-only">&times;</button>
     </div>
-    <div id="proxy-status" class="proxy-status"></div>
-    <hr style="border-color:var(--line);margin:16px 0">
-    <h4 style="margin-bottom:8px">🎵 歌词延迟补偿</h4>
-    <p class="modal-desc">换歌时有缓冲，歌词会慢半拍。这里让歌词提前，跟声音对齐（默认 520ms）。</p>
-    <div style="display:flex;align-items:center;gap:12px">
-      <input id="lyric-delay" type="range" min="0" max="2000" step="10" value="520" style="flex:1">
-      <span id="lyric-delay-val" style="min-width:70px;text-align:right">520ms</span>
+    
+    <div class="eq-row-toggle">
+      <label class="switch-label">
+        <input id="eq-switch" type="checkbox">
+        <span class="slider-toggle"></span>
+        <span class="switch-text">启用专业音频均衡器</span>
+      </label>
+      <label class="switch-label">
+        <input id="visualizer-switch" type="checkbox" checked>
+        <span class="slider-toggle"></span>
+        <span class="switch-text">动感频谱动画</span>
+      </label>
+    </div>
+
+    <div class="eq-section-title">音效预设</div>
+    <div class="eq-presets-grid" id="eq-presets">
+      <button class="preset-btn active" data-preset="flat">平衡 (默认)</button>
+      <button class="preset-btn" data-preset="bass">低音震撼</button>
+      <button class="preset-btn" data-preset="vocal">纯净人声</button>
+      <button class="preset-btn" data-preset="pop">流行金曲</button>
+      <button class="preset-btn" data-preset="rock">摇滚力量</button>
+      <button class="preset-btn" data-preset="electronic">电音派对</button>
+      <button class="preset-btn" data-preset="classical">优雅古典</button>
+      <button class="preset-btn" data-preset="spatial">3D 沉浸环绕</button>
+    </div>
+
+    <div class="eq-section-title" style="margin-top:16px">频段微调 (dB)</div>
+    <div class="eq-sliders-wrap">
+      <div class="eq-slider-col">
+        <span class="eq-db-val" id="eq-v-0">0dB</span>
+        <input type="range" class="eq-slider" orient="vertical" min="-12" max="12" step="1" value="0" data-index="0">
+        <span class="eq-hz-label">60Hz<br><small>超低音</small></span>
+      </div>
+      <div class="eq-slider-col">
+        <span class="eq-db-val" id="eq-v-1">0dB</span>
+        <input type="range" class="eq-slider" orient="vertical" min="-12" max="12" step="1" value="0" data-index="1">
+        <span class="eq-hz-label">250Hz<br><small>低中音</small></span>
+      </div>
+      <div class="eq-slider-col">
+        <span class="eq-db-val" id="eq-v-2">0dB</span>
+        <input type="range" class="eq-slider" orient="vertical" min="-12" max="12" step="1" value="0" data-index="2">
+        <span class="eq-hz-label">1kHz<br><small>人声中频</small></span>
+      </div>
+      <div class="eq-slider-col">
+        <span class="eq-db-val" id="eq-v-3">0dB</span>
+        <input type="range" class="eq-slider" orient="vertical" min="-12" max="12" step="1" value="0" data-index="3">
+        <span class="eq-hz-label">4kHz<br><small>明亮高频</small></span>
+      </div>
+      <div class="eq-slider-col">
+        <span class="eq-db-val" id="eq-v-4">0dB</span>
+        <input type="range" class="eq-slider" orient="vertical" min="-12" max="12" step="1" value="0" data-index="4">
+        <span class="eq-hz-label">12kHz<br><small>空气通透</small></span>
+      </div>
+    </div>
+
+    <div class="eq-section-title" style="margin-top:18px">倍速播放</div>
+    <div class="speed-grid" id="speed-buttons">
+      <button class="speed-btn" data-rate="0.75">0.75x</button>
+      <button class="speed-btn active" data-rate="1.0">1.0x 正常</button>
+      <button class="speed-btn" data-rate="1.25">1.25x</button>
+      <button class="speed-btn" data-rate="1.5">1.5x</button>
+      <button class="speed-btn" data-rate="2.0">2.0x</button>
     </div>
   </div>
 </div>
 
-<!-- 导入歌单 -->
+<!-- 睡眠定时器弹窗 -->
+<div id="sleep-modal" class="modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>⏱️ 睡眠定时关闭</h3>
+      <button id="sleep-close" class="ghost-btn icon-only">&times;</button>
+    </div>
+    <p class="modal-desc">到达预设时间后，音乐将柔和淡出并自动暂停播放，陪伴你安心入眠。</p>
+    <div id="sleep-status-banner" class="sleep-status-banner" hidden>
+      <span>定时关闭进行中：剩余 </span><strong id="sleep-remaining-text">30分00秒</strong>
+      <button id="sleep-cancel-btn" class="ghost-btn sm" style="margin-left:auto">取消定时</button>
+    </div>
+    <div class="sleep-options-grid">
+      <button class="sleep-opt-btn" data-mins="15">15 分钟</button>
+      <button class="sleep-opt-btn" data-mins="30">30 分钟</button>
+      <button class="sleep-opt-btn" data-mins="45">45 分钟</button>
+      <button class="sleep-opt-btn" data-mins="60">60 分钟</button>
+      <button class="sleep-opt-btn" data-mins="90">90 分钟</button>
+      <button class="sleep-opt-btn" data-mins="end-of-song">当前歌曲播完后关闭</button>
+    </div>
+    <div class="modal-row" style="margin-top:16px;align-items:center">
+      <input id="sleep-custom-input" type="number" min="1" max="720" placeholder="自定义分钟数 (如 25)" style="flex:1">
+      <button id="sleep-custom-start" class="primary-btn">开始计时</button>
+    </div>
+  </div>
+</div>
+
+<!-- 歌单操作弹窗（新建歌单 / 加入歌单） -->
+<div id="playlist-modal" class="modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="playlist-modal-title">🎵 歌单管理</h3>
+      <button id="playlist-modal-close" class="ghost-btn icon-only">&times;</button>
+    </div>
+    <!-- 新建歌单模式 -->
+    <div id="pl-create-view">
+      <p class="modal-desc">创建专属的本地自建歌单，歌单仅保存在您的浏览器本地，不依赖第三方账号。</p>
+      <input id="pl-name-input" type="text" placeholder="输入歌单名称 (例如: 专注自习 / 熬夜电音)" style="width:100%;margin-bottom:12px">
+      <div class="modal-row">
+        <button id="pl-create-confirm" class="primary-btn">确认创建</button>
+        <button id="pl-create-cancel" class="ghost-btn">取消</button>
+      </div>
+    </div>
+    <!-- 选取歌单添加歌曲模式 -->
+    <div id="pl-select-view" hidden>
+      <p class="modal-desc">将歌曲《<span id="pl-target-song-name"></span>》添加到：</p>
+      <div id="pl-select-list" class="pl-select-list"></div>
+      <div class="modal-row" style="margin-top:14px">
+        <button id="pl-new-and-add-btn" class="ghost-btn sm">＋ 新建歌单并加入</button>
+        <button id="pl-select-close-btn" class="ghost-btn sm" style="margin-left:auto">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 设置与备份 -->
+<div id="settings-modal" class="modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>⚙️ 播放器设置</h3>
+      <button id="proxy-close" class="ghost-btn icon-only">&times;</button>
+    </div>
+    <p class="modal-desc">本站默认使用高速中转（disablecdnblock.qingtian6325.workers.dev），点开即听，公司局域网也能顺畅使用。你也可以填自己的 Worker 地址覆盖它；清空则恢复默认中转。</p>
+    <input id="proxy-input" type="text" placeholder="https://你的worker.workers.dev" style="width:100%">
+    <div class="modal-row">
+      <button id="proxy-test" class="ghost-btn">测试连接</button>
+      <button id="proxy-save" class="primary-btn">保存</button>
+      <button id="proxy-clear" class="ghost-btn">恢复默认</button>
+    </div>
+    <div id="proxy-status" class="proxy-status"></div>
+
+    <hr style="border-color:var(--line);margin:16px 0">
+    <h4 style="margin-bottom:6px">🎵 歌词延迟补偿</h4>
+    <p class="modal-desc">换歌时有微小音频缓冲，让歌词提前或延后跟声音完美对齐（默认 520ms）。</p>
+    <div style="display:flex;align-items:center;gap:12px">
+      <input id="lyric-delay" type="range" min="0" max="2000" step="10" value="520" style="flex:1">
+      <span id="lyric-delay-val" style="min-width:70px;text-align:right">520ms</span>
+    </div>
+
+    <hr style="border-color:var(--line);margin:16px 0">
+    <h4 style="margin-bottom:6px">📦 数据备份与恢复</h4>
+    <p class="modal-desc">导出您的所有收藏歌曲、自定义歌单与偏好设置，或在其他设备上导入还原，永不丢失歌曲数据。</p>
+    <div class="modal-row">
+      <button id="export-data-btn" class="ghost-btn">💾 导出备份 (JSON)</button>
+      <button id="import-data-trigger" class="ghost-btn">📥 导入备份文件</button>
+      <input id="import-data-file" type="file" accept=".json" style="display:none">
+    </div>
+
+    <hr style="border-color:var(--line);margin:16px 0">
+    <h4 style="margin-bottom:6px">⌨️ 快捷键速查</h4>
+    <div class="shortcut-grid">
+      <div><kbd>Space</kbd> 播放 / 暂停</div>
+      <div><kbd>←</kbd> / <kbd>→</kbd> 上一首 / 下一首</div>
+      <div><kbd>↑</kbd> / <kbd>↓</kbd> 音量调节 (+/- 5%)</div>
+      <div><kbd>M</kbd> 静音切换</div>
+      <div><kbd>L</kbd> 打开/关闭歌词</div>
+      <div><kbd>Q</kbd> 打开/关闭播放队列</div>
+      <div><kbd>Esc</kbd> 关闭浮层窗口</div>
+    </div>
+  </div>
+</div>
+
+<!-- 导入外部歌单弹窗 -->
 <div id="import-modal" class="modal" hidden>
   <div class="modal-box">
-    <h3>📥 导入歌单</h3>
+    <div class="modal-head">
+      <h3>📥 导入外部歌单</h3>
+      <button id="import-close" class="ghost-btn icon-only">&times;</button>
+    </div>
     <p class="modal-desc">粘贴网易云 / Spotify / Apple Music / YouTube 的歌单链接，导入后会多一张歌单卡片。其他平台的歌会自动在网易云匹配对应歌曲。</p>
     <input id="import-url" type="text" placeholder="https://music.163.com/#/playlist?id=…" autocomplete="off" style="width:100%;margin-bottom:8px">
     <div class="modal-row">
-      <button id="import-btn" class="primary-btn">导入</button>
-      <button id="import-close" class="ghost-btn">取消</button>
+      <button id="import-btn" class="primary-btn">开始解析导入</button>
     </div>
     <div id="import-msg" class="proxy-status"></div>
   </div>
 </div>
 
+<!-- 提示框 -->
 <div id="toast" class="toast" hidden></div>
 
-<audio id="audio" preload="auto"></audio>
-<script src="js/app.js?v=20261014r"></script>
+<!-- 桌面画中画悬浮歌词隐藏绘制载体 -->
+<canvas id="pip-canvas" width="640" height="260" style="display:none"></canvas>
+<video id="pip-video" muted autoplay playsinline style="display:none"></video>
+
+<audio id="audio" preload="auto" crossorigin="anonymous"></audio>
+<script src="js/app.js?v=20261020r"></script>
 </body>
 </html>
