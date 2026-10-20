@@ -30,14 +30,16 @@
       <!-- 搜索栏及搜索历史/热门推荐 -->
       <div class="search-box">
         <div class="search-input-wrap">
-          <input id="search-input" type="text" placeholder="搜索歌曲 / 歌手 / 专辑…" autocomplete="off">
+          <input id="search-input" type="text" placeholder="搜索歌曲 / 歌手 / 粘贴YouTube链接…" autocomplete="off">
           <button id="search-clear-btn" class="search-clear-btn" title="清空输入" hidden>&times;</button>
         </div>
         <div class="search-row">
           <select id="source-select" title="音乐源">
-            <option value="netease" selected>网易云</option>
-            <option value="joox">JOOX</option>
-            <option value="bilibili">B站</option>
+            <option value="all" selected>🌐 全网聚合</option>
+            <option value="netease">网易云</option>
+            <option value="youtube">YouTube 音乐</option>
+            <option value="joox">JOOX 海外</option>
+            <option value="bilibili">B站音乐</option>
           </select>
           <button id="search-btn">搜索</button>
         </div>

@@ -1,5 +1,5 @@
 /* 音乐播放器 - 数据接口: GD音乐台 music.gdstudio.xyz (CC BY-NC 4.0, 仅供学习)
- * 功能增强版: 播放队列、音频均衡器、桌面画中画歌词、睡眠定时、自建歌单、搜索历史与热搜、数据备份
+ * 功能增强版: 播放队列、音频均衡器、桌面画中画歌词、睡眠定时、自建歌单、YouTube 音乐支持、全网聚合搜索、数据备份
  */
 const API = 'https://music-api.gdstudio.xyz/api.php';
 const BR_FALLBACK = [999, 740, 320, 128];
@@ -38,6 +38,24 @@ function escapeHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/* 过滤 YouTube 标题中的 MV、官方、歌词等无关词，提高音源匹配成功率 */
+function cleanSongTitle(title) {
+  return String(title || '')
+    .replace(/【.*?】/g, ' ')
+    .replace(/\[.*?\]/g, ' ')
+    .replace(/\(.*?(?:MV|Official|官方|歌词|HD|4K|1080P|Lyrics?|Audio|Video|完整版).*?\)/gi, ' ')
+    .replace(/\b(?:Official\s*Music\s*Video|Official\s*Lyric\s*Video|Official\s*Audio|Full\s*Song|歌词版|4K|HD|1080P)\b/gi, ' ')
+    .replace(/[-_\|\/]\s*$/g, '')
+    .replace(/^\s*[-_\|\/]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchYouTubeUrl(str) {
+  const m = String(str || '').match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
 /* ---------- API ---------- */
 const DEFAULT_PROXY = 'https://disablecdnblock.qingtian6325.workers.dev';
 function proxyBase() {
@@ -62,7 +80,7 @@ function audioSrc(cdnUrl) {
   const proxy = proxyBase();
   return proxy ? proxy + '/audio?src=' + encodeURIComponent(cdnUrl) : cdnUrl;
 }
-/* 封面地址：走 Worker /img 中转；失败时调用处回退显示 */
+/* 封面地址：走 Worker /img 中转；即使在公司内网封锁了 YouTube / 126.net 也能正常显示 */
 function imgSrc(u) {
   if (!u) return '';
   let url = String(u).replace(/"/g, '');
@@ -372,10 +390,12 @@ async function playTrack(index) {
   // 确保音频图谱与均衡器初始化
   tryInitAudioContext();
 
-  // 导入歌单的曲目：先在网易云匹配对应歌曲
+  // YouTube / JOOX 或需要匹配的音源：自动全网智能匹配高保真音频
   if (track._needMatch && !track._matched) {
+    const cleanName = cleanSongTitle(track.name);
+    const query = (cleanName + ' ' + (track.artist || []).join(' ')).trim();
     try {
-      const d = await api({ types: 'search', source: 'netease', name: track._matchQuery, count: '5' });
+      const d = await api({ types: 'search', source: 'netease', name: query, count: '5' });
       const list = Array.isArray(d) ? d : [];
       if (list.length) {
         const s = list[0];
@@ -383,11 +403,12 @@ async function playTrack(index) {
         track.source = s.source || 'netease';
         track.pic_id = s.pic_id || '';
         track.lyric_id = s.lyric_id ? String(s.lyric_id) : String(s.id);
+        if (!track.pic && s.pic) track.pic = s.pic;
         track._matched = true;
         const rows = document.querySelectorAll('.track-row');
         if (rows[index]) rows[index].dataset.key = trackKey(track);
       } else {
-        toast(`《${track.name}》在网易云找不到，已跳过`);
+        toast(`已尝试全网匹配《${track.name}》，无直链跳过`);
         setBuffering(false);
         nextTrack();
         return;
@@ -403,14 +424,33 @@ async function playTrack(index) {
   }
 
   // 解析最高可用音质地址
-  const r = await resolveUrl(track.source, track.id);
+  let r = await resolveUrl(track.source, track.id);
+  
+  // 若当前音源解析失败（如 JOOX 变灰或空链接），自动尝试网易云匹配
+  if (!r && track.source !== 'netease') {
+    try {
+      const cleanName = cleanSongTitle(track.name);
+      const query = (cleanName + ' ' + (track.artist || []).join(' ')).trim();
+      const matched = await api({ types: 'search', source: 'netease', name: query, count: '3' });
+      if (Array.isArray(matched) && matched.length > 0) {
+        const best = matched[0];
+        track.id = String(best.id);
+        track.source = 'netease';
+        track.lyric_id = String(best.lyric_id || best.id);
+        r = await resolveUrl('netease', best.id);
+      }
+    } catch (e) {}
+  }
+
   if (qIndex !== index) return;
   if (!r) {
-    toast('这首歌暂无可播放地址，已跳过');
+    toast('这首歌暂无可播放地址，已自动跳过');
     setBuffering(false);
     nextTrack();
     return;
   }
+
+  audio.crossOrigin = 'anonymous';
   audio.src = audioSrc(r.url);
   track._cdnUrl = r.url;
   audioFallbackTried = false;
@@ -606,7 +646,7 @@ function addToQueue(track, playNext = false) {
 }
 
 /* ---------- 列表渲染 ---------- */
-function trackKey(t) { return t.source + ':' + t.id; }
+function trackKey(t) { return (t.source || 'music') + ':' + (t.id || t.ytId || t.name); }
 
 let currentRenderedTracks = [];
 
@@ -622,7 +662,7 @@ function renderTrackList(tracks, title, subtitle = '') {
   if (tracks.length > 0) {
     const head = document.createElement('div');
     head.className = 'track-head';
-    head.innerHTML = '<span>#</span><span>标题</span><span class="th-album">专辑</span><span class="th-dur">时长</span><span></span><span></span>';
+    head.innerHTML = '<span>#</span><span>标题</span><span class="th-album">专辑 / 来源</span><span class="th-dur">时长</span><span></span><span></span>';
     box.appendChild(head);
   }
   tracks.forEach((t, i) => {
@@ -630,13 +670,14 @@ function renderTrackList(tracks, title, subtitle = '') {
     row.className = 'track-row';
     row.dataset.key = trackKey(t);
     const loved = favorites.some((f) => f.id === t.id && f.source === t.source);
+    const albumDisplay = t.album || (t.source === 'youtube' ? 'YouTube' : '—');
     row.innerHTML = `
       <span class="track-idx">${i + 1}</span>
       <div class="track-main">
         <div class="track-name">${escapeHtml(t.name)}</div>
         <div class="track-sub">${escapeHtml(t.artist.join(' / '))}</div>
       </div>
-      <span class="track-album">${escapeHtml(t.album || '—')}</span>
+      <span class="track-album">${escapeHtml(albumDisplay)}</span>
       <span class="track-dur">${t.duration ? fmtTime(t.duration) : '—'}</span>
       <button class="row-fav${loved ? ' loved' : ''}" title="收藏">${loved ? ICONS.heartFill : ICONS.heart}</button>
       <button class="row-more" title="更多操作">${ICONS.more}</button>
@@ -737,8 +778,16 @@ $('track-menu').addEventListener('click', (e) => {
 async function downloadAudio(t) {
   toast(`正在准备下载《${t.name}》…`);
   try {
-    const r = await resolveUrl(t.source, t.id);
-    if (!r || !r.url) throw new Error('未获取到音频地址');
+    let r = await resolveUrl(t.source, t.id);
+    if (!r && t.source !== 'netease') {
+      const cleanName = cleanSongTitle(t.name);
+      const query = (cleanName + ' ' + (t.artist || []).join(' ')).trim();
+      const matched = await api({ types: 'search', source: 'netease', name: query, count: '3' });
+      if (Array.isArray(matched) && matched.length > 0) {
+        r = await resolveUrl('netease', matched[0].id);
+      }
+    }
+    if (!r || !r.url) throw new Error('未获取到有效音频地址');
     const proxy = proxyBase();
     const finalUrl = proxy ? proxy + '/audio?src=' + encodeURIComponent(r.url) : r.url;
     const a = document.createElement('a');
@@ -1078,7 +1127,7 @@ let searchHistory = [];
 try { searchHistory = JSON.parse(localStorage.getItem('mp_search_history') || '[]'); } catch (e) {}
 
 let searchKeyword = '';
-let searchSource = 'netease';
+let searchSource = 'all';
 let searchPage = 1;
 let currentSearchTracks = [];
 
@@ -1132,10 +1181,11 @@ function renderSearchTags() {
   });
 }
 
+/* 核心搜索实现：支持全网聚合、网易云、YouTube 跨域检索与单曲直链解析 */
 async function doSearch(isLoadMore = false) {
   if (!isLoadMore) {
     searchKeyword = $('search-input').value.trim();
-    if (!searchKeyword) { toast('请先输入关键词'); return; }
+    if (!searchKeyword) { toast('请先输入关键词或粘贴链接'); return; }
     searchSource = $('source-select').value;
     searchPage = 1;
     currentSearchTracks = [];
@@ -1154,20 +1204,155 @@ async function doSearch(isLoadMore = false) {
     $('load-more-btn').textContent = '加载中…';
   }
 
+  // 1. 检测是否直接输入了 YouTube 链接
+  const ytVid = matchYouTubeUrl(searchKeyword);
+  if (ytVid && !isLoadMore) {
+    try {
+      const proxy = proxyBase();
+      let info = null;
+      if (proxy) {
+        try { info = await fetchJson(proxy + '/yt-info?id=' + ytVid); } catch (e) {}
+      }
+      if (!info) {
+        info = {
+          id: `yt_${ytVid}`,
+          ytId: ytVid,
+          name: 'YouTube 单曲 (' + ytVid + ')',
+          artist: ['YouTube'],
+          album: 'YouTube',
+          pic: `https://i.ytimg.com/vi/${ytVid}/hqdefault.jpg`,
+          duration: 0,
+          source: 'youtube',
+          _needMatch: true,
+          _matchQuery: ytVid
+        };
+      }
+      showListLoading(false);
+      currentSearchTracks = [info];
+      renderTrackList(currentSearchTracks, `YouTube 解析结果`, `点击即可通过中转智能播放`);
+      toast('已成功解析 YouTube 链接 🎵');
+      return;
+    } catch (e) {
+      showListLoading(false);
+      toast('YouTube 链接解析失败');
+      return;
+    }
+  }
+
+  let newTracks = [];
+
   try {
-    const d = await api({ types: 'search', source: searchSource, name: searchKeyword, count: '20', pages: String(searchPage) });
-    const list = Array.isArray(d) ? d : [];
-    const newTracks = list.map((s) => ({
-      id: String(s.id),
-      name: s.name,
-      artist: s.artist || [],
-      album: s.album || '',
-      pic: '',
-      pic_id: s.pic_id || '',
-      lyric_id: s.lyric_id ? String(s.lyric_id) : String(s.id),
-      source: s.source || searchSource,
-      duration: 0,
-    }));
+    // 2. YouTube 独立源搜索
+    if (searchSource === 'youtube') {
+      const proxy = proxyBase();
+      try {
+        const d = await fetchJson(proxy + '/yt-search?q=' + encodeURIComponent(searchKeyword));
+        if (Array.isArray(d)) {
+          newTracks = d;
+        } else {
+          throw new Error('未返回数组');
+        }
+      } catch (err) {
+        // 如果用户的 Worker 尚未更新该路由，智能降级为网易云并通知
+        toast('中转未部署 /yt-search 路由，已自动为您全网音源匹配');
+        const d = await api({ types: 'search', source: 'netease', name: searchKeyword, count: '20' });
+        newTracks = (Array.isArray(d) ? d : []).map(s => ({
+          id: String(s.id),
+          name: s.name,
+          artist: s.artist || [],
+          album: s.album || '网易云',
+          pic: '',
+          pic_id: s.pic_id || '',
+          lyric_id: s.lyric_id ? String(s.lyric_id) : String(s.id),
+          source: 'netease',
+          duration: 0,
+        }));
+      }
+    } 
+    // 3. 🌐 全网聚合搜索（并发请求网易云 + JOOX + YouTube，去重整合）
+    else if (searchSource === 'all') {
+      const promises = [
+        api({ types: 'search', source: 'netease', name: searchKeyword, count: '15', pages: String(searchPage) }),
+        api({ types: 'search', source: 'joox', name: searchKeyword, count: '15', pages: String(searchPage) })
+      ];
+      const proxy = proxyBase();
+      if (proxy) {
+        promises.push(fetchJson(proxy + '/yt-search?q=' + encodeURIComponent(searchKeyword)).catch(() => []));
+      }
+
+      const results = await Promise.allSettled(promises);
+      const combined = [];
+      const seen = new Set();
+
+      // 网易云结果
+      if (results[0].status === 'fulfilled' && Array.isArray(results[0].value)) {
+        results[0].value.forEach(s => {
+          const key = (s.name + '|' + (s.artist || []).join(',')).toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            combined.push({
+              id: String(s.id),
+              name: s.name,
+              artist: s.artist || [],
+              album: s.album ? `${s.album} · 网易云` : '网易云',
+              pic: '',
+              pic_id: s.pic_id || '',
+              lyric_id: s.lyric_id ? String(s.lyric_id) : String(s.id),
+              source: 'netease',
+              duration: 0,
+            });
+          }
+        });
+      }
+      // JOOX 结果（填补海外版权）
+      if (results[1].status === 'fulfilled' && Array.isArray(results[1].value)) {
+        results[1].value.forEach(s => {
+          const key = (s.name + '|' + (s.artist || []).join(',')).toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            combined.push({
+              id: String(s.id),
+              name: s.name,
+              artist: s.artist || [],
+              album: s.album ? `${s.album} · JOOX` : 'JOOX 海外',
+              pic: '',
+              pic_id: s.pic_id || '',
+              lyric_id: s.lyric_id ? String(s.lyric_id) : String(s.id),
+              source: 'joox',
+              duration: 0,
+            });
+          }
+        });
+      }
+      // YouTube 结果
+      if (results[2] && results[2].status === 'fulfilled' && Array.isArray(results[2].value)) {
+        results[2].value.forEach(s => {
+          const key = (cleanSongTitle(s.name) + '|' + (s.artist || []).join(',')).toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            combined.push(s);
+          }
+        });
+      }
+
+      newTracks = combined;
+    }
+    // 4. 其他单个音源
+    else {
+      const d = await api({ types: 'search', source: searchSource, name: searchKeyword, count: '20', pages: String(searchPage) });
+      const list = Array.isArray(d) ? d : [];
+      newTracks = list.map((s) => ({
+        id: String(s.id),
+        name: s.name,
+        artist: s.artist || [],
+        album: s.album || '',
+        pic: '',
+        pic_id: s.pic_id || '',
+        lyric_id: s.lyric_id ? String(s.lyric_id) : String(s.id),
+        source: s.source || searchSource,
+        duration: 0,
+      }));
+    }
 
     currentSearchTracks = [...currentSearchTracks, ...newTracks];
     showListLoading(false);
@@ -1177,7 +1362,7 @@ async function doSearch(isLoadMore = false) {
       $('load-more-wrap').hidden = true;
     } else {
       renderTrackList(currentSearchTracks, `搜索：${searchKeyword}`, `共找到 ${currentSearchTracks.length} 首歌曲`);
-      $('load-more-wrap').hidden = newTracks.length < 20;
+      $('load-more-wrap').hidden = (searchSource === 'youtube' || newTracks.length < 15);
     }
   } catch (e) {
     showListLoading(false);
@@ -1869,9 +2054,11 @@ let audioFallbackTried = false;
 audio.addEventListener('error', () => {
   const t = currentTrack();
   const pb = proxyBase();
-  if (t && t._cdnUrl && pb && audio.src.startsWith(pb) && !audioFallbackTried) {
+  if (t && t._cdnUrl && !audioFallbackTried) {
     audioFallbackTried = true;
     toast('中转连接不畅，尝试直连…');
+    // 移除 crossorigin 避免直链 CDN 不支持 CORS 时被阻断
+    audio.removeAttribute('crossorigin');
     audio.src = t._cdnUrl;
     audio.play().catch(() => {});
   }

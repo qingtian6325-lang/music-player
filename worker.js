@@ -1,14 +1,15 @@
-/* Cloudflare Worker - 音乐 API + 音频中转
- * 用途：让公开版音乐播放器在封锁了 *.music.126.net 的网络下也能用，
+/* Cloudflare Worker - 音乐 API + 音频/图片中转 + YouTube 跨域搜索
+ * 用途：让公开版音乐播放器在封锁了 *.music.126.net / YouTube 的办公室内网也能顺畅使用，
  *       浏览器只跟本 Worker 通信，由 Worker 在服务端取回数据/音频并流式转发。
  * 部署：Cloudflare Dashboard -> Workers -> Create -> 粘贴本文件 -> Deploy
  * 费用：免费版每日 10 万次请求，个人用足够。
  */
 const UPSTREAM_API = 'https://music-api.gdstudio.xyz';
+const YT_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
 
 function cors(res) {
   res.headers.set('Access-Control-Allow-Origin', '*');
-  res.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.headers.set('Access-Control-Allow-Headers', '*');
   return res;
 }
@@ -61,7 +62,7 @@ export default {
       }
     }
 
-    // 3) 图片中转：/img?src=<封面直链>（公司网络打不开 *.music.126.net 时用）
+    // 3) 图片中转：/img?src=<封面直链>（公司网络打不开 *.music.126.net 或 *.ytimg.com 时用）
     if (url.pathname === '/img') {
       const src = needSrc(url);
       if (!src) return cors(new Response('missing src', { status: 400 }));
@@ -86,9 +87,114 @@ export default {
       }
     }
 
+    // 5) YouTube 歌曲与视频检索：/yt-search?q=<关键词>&count=25
+    if (url.pathname === '/yt-search') {
+      const q = url.searchParams.get('q') || '';
+      if (!q) return cors(new Response(JSON.stringify([]), { headers: { 'Content-Type': 'application/json' } }));
+      try {
+        const results = await searchYouTube(q);
+        return cors(new Response(JSON.stringify(results), {
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        }));
+      } catch (e) {
+        return cors(new Response(JSON.stringify({ error: String((e && e.message) || e) }), { status: 500 }));
+      }
+    }
+
+    // 6) YouTube 单曲信息提取：/yt-info?id=<vid> 或 ?url=<url>
+    if (url.pathname === '/yt-info') {
+      const qUrl = url.searchParams.get('url') || '';
+      let vid = url.searchParams.get('id') || '';
+      if (!vid && qUrl) {
+        const m = qUrl.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+        if (m) vid = m[1];
+      }
+      if (!vid) return cors(new Response(JSON.stringify({ error: 'invalid video id' }), { status: 400 }));
+      try {
+        const info = await getYouTubeInfo(vid);
+        return cors(new Response(JSON.stringify(info), {
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        }));
+      } catch (e) {
+        return cors(new Response(JSON.stringify({ error: String((e && e.message) || e) }), { status: 500 }));
+      }
+    }
+
     return cors(new Response('music-proxy ok'));
   },
 };
+
+/* ---------- YouTube 搜索与信息提取 ---------- */
+async function searchYouTube(query) {
+  const r = await fetch(`https://www.youtube.com/youtubei/v1/search?key=${YT_API_KEY}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    },
+    body: JSON.stringify({
+      context: { client: { clientName: 'WEB', clientVersion: '2.20240101.00.00' } },
+      query: query,
+    }),
+  });
+  const d = await r.json();
+  const list = [];
+  try {
+    const contents = d.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents || [];
+    for (const it of contents) {
+      const vr = it.videoRenderer;
+      if (!vr) continue;
+      const vid = vr.videoId;
+      const title = vr.title?.runs?.[0]?.text || '';
+      const artist = vr.ownerText?.runs?.[0]?.text || '';
+      const durationStr = vr.lengthText?.simpleText || '0:00';
+      const thumbs = vr.thumbnail?.thumbnails || [];
+      const pic = thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+      
+      const parts = durationStr.split(':').map(Number);
+      let durSec = 0;
+      if (parts.length === 2) durSec = parts[0] * 60 + parts[1];
+      else if (parts.length === 3) durSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
+
+      if (vid && title) {
+        list.push({
+          id: `yt_${vid}`,
+          ytId: vid,
+          name: title,
+          artist: [artist],
+          album: 'YouTube Music',
+          pic: pic,
+          duration: durSec,
+          source: 'youtube',
+          _needMatch: true,
+          _matchQuery: `${title} ${artist}`
+        });
+      }
+      if (list.length >= 25) break;
+    }
+  } catch (e) {}
+  return list;
+}
+
+async function getYouTubeInfo(vid) {
+  const r = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(vid)}&format=json`, {
+    headers: { 'User-Agent': 'Mozilla/5.0' },
+  });
+  if (!r.ok) throw new Error('获取 YouTube 视频信息失败');
+  const d = await r.json();
+  return {
+    id: `yt_${vid}`,
+    ytId: vid,
+    name: d.title || 'YouTube 视频',
+    artist: [d.author_name || 'YouTube'],
+    album: 'YouTube',
+    pic: d.thumbnail_url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+    duration: 0,
+    source: 'youtube',
+    _needMatch: true,
+    _matchQuery: `${d.title || ''} ${d.author_name || ''}`
+  };
+}
 
 /* ---------- 歌单解析 ---------- */
 async function parsePlaylist(plUrl) {
@@ -152,7 +258,6 @@ async function parseApplePlaylist(pageUrl) {
 }
 
 async function parseSpotifyPlaylist(pid) {
-  // 匿名 token（Cloudflare 出口 IP 可能可用）
   const sHeaders = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' };
   await fetch('https://open.spotify.com/', { headers: sHeaders });
   const tr = await (await fetch(
@@ -173,7 +278,7 @@ async function parseSpotifyPlaylist(pid) {
           `https://api.spotify.com/v1/playlists/${pid}?fields=name`,
           { headers: { ...sHeaders, Authorization: 'Bearer ' + token } })).json();
         if (pr.name) name = pr.name;
-      } catch (e) { /* 忽略 */ }
+      } catch (e) {}
     }
     for (const it of (ar.items || [])) {
       const t = (it || {}).track || {};
@@ -192,13 +297,10 @@ async function parseSpotifyPlaylist(pid) {
 }
 
 async function parseYTPlaylist(pageUrl) {
-  // 从 URL 提取 playlist ID
   const m = pageUrl.match(/[?&]list=([a-zA-Z0-9_-]+)/);
   if (!m) throw new Error('链接里没有找到歌单 ID');
   const listId = m[1];
-  // 用 YouTube 内部 API 拿曲目（页面是 JS 空壳，直接抓没数据）
-  const apiKey = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
-  const r = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${apiKey}`, {
+  const r = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${YT_API_KEY}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -223,7 +325,6 @@ async function parseYTPlaylist(pageUrl) {
         if (!vm) continue;
         const md = ((vm.metadata || {}).lockupMetadataViewModel) || {};
         const title = (md.title || {}).content || '';
-        // 从缩略图 URL 提取 videoId
         const thumbJson = JSON.stringify(vm.contentImage || {});
         const vm2 = thumbJson.match(/\/vi\/([a-zA-Z0-9_-]{11})\//);
         const vid = vm2 ? vm2[1] : '';
@@ -232,7 +333,7 @@ async function parseYTPlaylist(pageUrl) {
       }
       if (tracks.length >= 200) break;
     }
-  } catch (e) { /* 解析失败 */ }
+  } catch (e) {}
   if (!tracks.length) throw new Error('没找到曲目，可能是私密歌单或地区限制');
   return { name, tracks, platform: 'youtube' };
 }
