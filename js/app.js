@@ -1,14 +1,14 @@
 /* 音乐播放器 - 多源聚合版 (GDStudio 优先 · 支持 Meting/Qijieya 智能瀑布容灾降级) */
-const GDSTUDIO_SOURCE = 'https://music-api.gdstudio.xyz/api.php';
+const GDSTUDIO_SOURCE = 'https://music.gdstudio.xyz/api.php';
 const DEFAULT_API_SOURCE = GDSTUDIO_SOURCE;
 const FAILOVER_SOURCES = [
-  'https://music-api.gdstudio.xyz/api.php',
+  'https://music.gdstudio.xyz/api.php',
   'https://met.liiiu.cn/meting/api',
   'https://api.qijieya.cn/meting/',
   'https://api.injahow.cn/meting/'
 ];
 const API_PRESETS = [
-  { id: 'gdstudio', name: '🌟 GDStudio (默认主源 · 失败智能容灾多源降级)', url: 'https://music-api.gdstudio.xyz/api.php' },
+  { id: 'gdstudio', name: '🌟 GDStudio (默认主源 · 失败智能容灾多源降级)', url: 'https://music.gdstudio.xyz/api.php' },
   { id: 'liiiu', name: '🚀 Meting 全网高速节点 (快速稳定)', url: 'https://met.liiiu.cn/meting/api' },
   { id: 'qijieya', name: '🛡️ Qijieya 节点 (支持 VIP/黑胶解析)', url: 'https://api.qijieya.cn/meting/' },
   { id: 'injahow', name: '⚡ Injahow 节点 (备用 · 歌单/音频流)', url: 'https://api.injahow.cn/meting/' }
@@ -160,7 +160,21 @@ async function api(params) {
         }
       } else {
         // GDStudio (api.php)
-        const q = new URLSearchParams(params).toString();
+        const qParams = { ...params };
+        let signKey = '';
+        if (params.types === 'playlist' || params.types === 'userlist') signKey = encodeURIComponent(String(params.id || ''));
+        else if (params.types === 'url' || params.types === 'pic') signKey = encodeURIComponent(String(params.id || ''));
+        else if (params.types === 'lyric') signKey = encodeURIComponent(String(params.lyric_id || params.id || ''));
+        else if (params.types === 'search') signKey = encodeURIComponent(String(params.name || ''));
+        else signKey = encodeURIComponent(String(params.id || params.name || ''));
+
+        if (typeof window !== 'undefined' && typeof window.crc32 === 'function' && signKey) {
+          try {
+            qParams.s = window.crc32(signKey);
+          } catch (e) {}
+        }
+
+        const q = new URLSearchParams(qParams).toString();
         const proxy = proxyBase();
         let data = null;
         if (proxy) {
@@ -170,7 +184,13 @@ async function api(params) {
         }
         if (!data) {
           const u = `${ep}?${q}`;
-          const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(3000) });
+          const res = await fetch(u, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'application/json, text/javascript, */*; q=0.01'
+            },
+            signal: AbortSignal.timeout(4000)
+          });
           if (!res.ok) throw new Error('HTTP ' + res.status);
           data = await res.json();
         }

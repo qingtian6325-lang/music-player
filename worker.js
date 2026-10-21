@@ -47,7 +47,7 @@ export default {
         tryEndpoints.push(customUpstream.replace(/\/$/, ''));
       }
       // 默认瀑布降级链：GDStudio 优先 -> 失败或异常自然流转至 Meting 高速节点
-      tryEndpoints.push('https://music-api.gdstudio.xyz');
+      tryEndpoints.push('https://music.gdstudio.xyz');
       tryEndpoints.push('https://met.liiiu.cn/meting/api');
 
       let lastError = null;
@@ -72,10 +72,19 @@ export default {
         }
 
         try {
-          const r = await fetch(target, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          const r = await fetch(target, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Referer': 'https://music.gdstudio.xyz/',
+              'Origin': 'https://music.gdstudio.xyz',
+              'Accept': 'application/json, text/javascript, */*; q=0.01'
+            }
+          });
           if (!r.ok) throw new Error('HTTP ' + r.status);
           const body = await r.text();
-          if (body.includes('Turnstile') || body.includes('Invalid request.')) throw new Error('Upstream challenge/invalid');
+          if (body.trim().startsWith('<') || body.includes('Turnstile') || body.includes('Invalid request.') || body.includes('challenge-platform')) {
+            throw new Error('Upstream challenge/invalid');
+          }
           return cors(new Response(body, {
             status: r.status,
             headers: { 'Content-Type': r.headers.get('content-type') || 'application/json; charset=utf-8' },
