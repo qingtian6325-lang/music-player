@@ -38,17 +38,15 @@ function escapeHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/* 过滤 YouTube 标题中的 MV、官方、歌词等无关词，提高音源匹配成功率 */
+/* 过滤 YouTube 标题中的 MV、官方、歌词等无关词，提高音源与歌词匹配成功率 */
 function cleanSongTitle(title) {
-  return String(title || '')
-    .replace(/【.*?】/g, ' ')
-    .replace(/\[.*?\]/g, ' ')
-    .replace(/\(.*?(?:MV|Official|官方|歌词|HD|4K|1080P|Lyrics?|Audio|Video|完整版).*?\)/gi, ' ')
-    .replace(/\b(?:Official\s*Music\s*Video|Official\s*Lyric\s*Video|Official\s*Audio|Full\s*Song|歌词版|4K|HD|1080P)\b/gi, ' ')
-    .replace(/[-_\|\/]\s*$/g, '')
-    .replace(/^\s*[-_\|\/]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  let s = String(title || '');
+  s = s.replace(/[【】\[\]\(\)「」『』]/g, ' ');
+  s = s.replace(/\b(?:Official\s*Music\s*Video|Official\s*Lyric\s*Video|Official\s*Audio|Official\s*Video|Music\s*Video|Lyric\s*Video|Full\s*Song|Full\s*Audio|4K|HD|1080P|MV|Official|官方|歌词版|完整版|高音质|无损|现场版|Live|Performance)\b/gi, ' ');
+  s = s.replace(/[-_\|\/]\s*$/g, '');
+  s = s.replace(/^\s*[-_\|\/]/g, '');
+  s = s.replace(/\s+/g, ' ').trim();
+  return s;
 }
 
 function matchYouTubeUrl(str) {
@@ -207,9 +205,42 @@ async function loadLyric(track) {
   if (lyricCache.has(key)) return lyricCache.get(key);
   let lines = [];
   try {
-    const d = await api({ types: 'lyric', source: track.source, id: track.lyric_id || track.id });
-    if (d && (d.lyric || d.tlyric)) lines = parseLrc(d.lyric || '', d.tlyric || '');
-  } catch (e) { /* 无歌词 */ }
+    let lid = track.lyric_id;
+    let lsrc = track._lyricSource || (track.source === 'youtube' ? 'netease' : track.source);
+
+    // YouTube 歌曲或无 lyric_id 歌曲：自动通过智能清洗后的歌名+歌手检索歌词
+    if (!lid) {
+      const cleanName = cleanSongTitle(track.name);
+      const artistStr = (track.artist || []).filter(a => a !== 'YouTube').join(' ');
+      let query = (cleanName + ' ' + artistStr).trim();
+      let d = await api({ types: 'search', source: 'netease', name: query, count: '3' });
+      let list = Array.isArray(d) ? d : [];
+
+      if (!list.length && cleanName.includes(' - ')) {
+        const parts = cleanName.split(' - ');
+        d = await api({ types: 'search', source: 'netease', name: `${parts[1]} ${parts[0]}`.trim(), count: '3' });
+        list = Array.isArray(d) ? d : [];
+      }
+      if (!list.length && cleanName.includes(' - ')) {
+        d = await api({ types: 'search', source: 'netease', name: cleanName.split(' - ')[1].trim(), count: '3' });
+        list = Array.isArray(d) ? d : [];
+      }
+
+      if (list.length > 0) {
+        lid = String(list[0].lyric_id || list[0].id);
+        lsrc = list[0].source || 'netease';
+        track.lyric_id = lid;
+        track._lyricSource = lsrc;
+      }
+    }
+
+    if (lid) {
+      const d = await api({ types: 'lyric', source: lsrc, id: lid });
+      if (d && (d.lyric || d.tlyric)) lines = parseLrc(d.lyric || '', d.tlyric || '');
+    }
+  } catch (e) {
+    console.warn('Lyric load error:', e);
+  }
   lyricCache.set(key, lines);
   return lines;
 }
@@ -232,11 +263,7 @@ function renderLyric(lines) {
     div.dataset.i = i;
     div.innerHTML = escapeHtml(ln.text) + (ln.trans ? `<span class="trans">${escapeHtml(ln.trans)}</span>` : '');
     div.onclick = () => {
-      if (currentPlaybackEngine === 'youtube' && ytPlayer && ytPlayer.seekTo) {
-        try { ytPlayer.seekTo(ln.t + 0.01, true); } catch (e) {}
-      } else {
-        audio.currentTime = ln.t + 0.01;
-      }
+      audio.currentTime = ln.t + 0.01;
       isUserScrollingLyrics = false;
       centerCurrentLyric();
     };
@@ -312,10 +339,7 @@ function syncLyricTime(timeSec) {
 }
 
 function syncLyric() {
-  const cur = (currentPlaybackEngine === 'youtube' && ytPlayer && ytPlayer.getCurrentTime)
-    ? (ytPlayer.getCurrentTime() || 0)
-    : audio.currentTime;
-  syncLyricTime(cur);
+  syncLyricTime(audio.currentTime);
 }
 
 /* ---------- 复制歌词 ---------- */
@@ -431,164 +455,60 @@ function updateQueueUI() {
   renderQueueDrawer();
 }
 
-/* ---------- YouTube 播放引擎 (Dual Engine) ---------- */
-let ytPlayer = null;
-let isYtPlayerReady = false;
-let ytPollTimer = null;
-let currentPlaybackEngine = 'audio'; // 'audio' | 'youtube'
-
-function initYouTubePlayerAPI() {
-  if (window.YT && window.YT.Player) {
-    createYouTubePlayer();
-    return;
+/* ---------- YouTube 歌曲智能音频与歌词解析器 (办公室内网穿透) ---------- */
+async function resolveYouTubeAudioAndLyrics(track) {
+  if (track._resolvedAudioUrl && track.lyric_id) {
+    return { url: track._resolvedAudioUrl, br: track._resolvedBr || 320 };
   }
-  if (!document.getElementById('yt-iframe-api')) {
-    const tag = document.createElement('script');
-    tag.id = 'yt-iframe-api';
-    tag.src = 'https://www.youtube.com/iframe_api';
-    tag.onerror = () => {
-      console.warn('YouTube IFrame API script failed to load (office network restriction)');
-    };
-    document.head.appendChild(tag);
-  }
-}
-
-window.onYouTubeIframeAPIReady = function() {
-  createYouTubePlayer();
-};
-
-function createYouTubePlayer() {
-  if (ytPlayer || !window.YT || !window.YT.Player) return;
-  const container = document.getElementById('yt-player');
-  if (!container) return;
-  try {
-    ytPlayer = new YT.Player('yt-player', {
-      height: '200',
-      width: '200',
-      playerVars: {
-        autoplay: 0,
-        controls: 0,
-        disablekb: 1,
-        fs: 0,
-        rel: 0,
-        playsinline: 1,
-        origin: window.location.origin
-      },
-      events: {
-        onReady: () => {
-          isYtPlayerReady = true;
-          if (ytPlayer && ytPlayer.setVolume) ytPlayer.setVolume(Math.round(audio.volume * 100));
-        },
-        onStateChange: onYouTubeStateChange,
-        onError: onYouTubeError
-      }
-    });
-  } catch (e) {
-    console.warn('YouTube Player init error:', e);
-  }
-}
-
-function onYouTubeStateChange(event) {
-  if (currentPlaybackEngine !== 'youtube') return;
-  if (event.data === 1) { // PLAYING
-    setBuffering(false);
-    setPlayIcon(true);
-    $('player-bar').classList.remove('paused');
-    $('now-playing').classList.remove('paused');
-    const a = $('ambient');
-    if (a) a.classList.remove('paused');
-    startYouTubePolling();
-    updateScreenWakeState();
-  } else if (event.data === 2) { // PAUSED
-    setBuffering(false);
-    setPlayIcon(false);
-    $('player-bar').classList.add('paused');
-    $('now-playing').classList.add('paused');
-    const a = $('ambient');
-    if (a) a.classList.add('paused');
-    stopYouTubePolling();
-    updateScreenWakeState();
-  } else if (event.data === 3) { // BUFFERING
-    setBuffering(true);
-  } else if (event.data === 0) { // ENDED
-    setBuffering(false);
-    stopYouTubePolling();
-    if (sleepStopOnTrackEnd) {
-      cancelSleepTimer(false);
-      setPlayIcon(false);
-      toast('单曲结束，睡眠定时已停止播放 🌙');
-      return;
-    }
-    nextTrack(true);
-  }
-}
-
-function onYouTubeError(event) {
-  console.warn('YouTube playback error code:', event.data);
-  if (currentPlaybackEngine === 'youtube') {
-    toast('YouTube 该视频限制外链嵌入，已自动为您匹配全网备用音源');
-    fallbackToMatchedAudio(currentTrack());
-  }
-}
-
-function startYouTubePolling() {
-  stopYouTubePolling();
-  ytPollTimer = setInterval(() => {
-    if (currentPlaybackEngine !== 'youtube' || !ytPlayer || !ytPlayer.getCurrentTime) return;
-    try {
-      const cur = ytPlayer.getCurrentTime() || 0;
-      const total = ytPlayer.getDuration() || 0;
-      $('time-cur').textContent = fmtTime(cur);
-      $('time-total').textContent = fmtTime(total);
-      $('progress-fill').style.width = total ? (cur / total * 100) + '%' : '0%';
-      syncLyricTime(cur);
-    } catch (e) {}
-  }, 250);
-}
-
-function stopYouTubePolling() {
-  if (ytPollTimer) {
-    clearInterval(ytPollTimer);
-    ytPollTimer = null;
-  }
-}
-
-async function fallbackToMatchedAudio(track) {
-  if (!track) return;
-  currentPlaybackEngine = 'audio';
-  stopYouTubePolling();
   const cleanName = cleanSongTitle(track.name);
-  const query = (cleanName + ' ' + (track.artist || []).join(' ')).trim();
-  let match = null;
+  const artistStr = (track.artist || []).filter(a => a !== 'YouTube').join(' ');
+
+  // 1. 完整检索 "歌名 歌手"
+  let query = (cleanName + ' ' + artistStr).trim();
+  let list = [];
   try {
-    const d = await api({ types: 'search', source: 'joox', name: query, count: '3' });
-    if (Array.isArray(d) && d.length > 0) match = d[0];
+    const d = await api({ types: 'search', source: 'netease', name: query, count: '3' });
+    if (Array.isArray(d) && d.length > 0) list = d;
   } catch (e) {}
-  if (!match) {
+
+  // 2. 如果标题包含 " - "，尝试颠倒顺序检索 "后半部分 前半部分"
+  if (!list.length && cleanName.includes(' - ')) {
+    const parts = cleanName.split(' - ');
     try {
-      const d = await api({ types: 'search', source: 'netease', name: query, count: '3' });
-      if (Array.isArray(d) && d.length > 0) match = d[0];
+      const d = await api({ types: 'search', source: 'netease', name: `${parts[1]} ${parts[0]}`.trim(), count: '3' });
+      if (Array.isArray(d) && d.length > 0) list = d;
     } catch (e) {}
   }
 
-  if (match) {
-    track.id = String(match.id);
-    track.source = match.source || 'joox';
-    track.lyric_id = String(match.lyric_id || match.id);
-    const r = await resolveUrl(track.source, track.id);
+  // 3. 仅用歌名部分检索
+  if (!list.length && cleanName.includes(' - ')) {
+    const songOnly = cleanName.split(' - ')[1].trim();
+    try {
+      const d = await api({ types: 'search', source: 'netease', name: songOnly, count: '3' });
+      if (Array.isArray(d) && d.length > 0) list = d;
+    } catch (e) {}
+  }
+
+  // 4. 尝试 JOOX
+  if (!list.length) {
+    try {
+      const d = await api({ types: 'search', source: 'joox', name: query, count: '3' });
+      if (Array.isArray(d) && d.length > 0) list = d;
+    } catch (e) {}
+  }
+
+  if (list.length > 0) {
+    const best = list[0];
+    track.lyric_id = String(best.lyric_id || best.id);
+    track._lyricSource = best.source || 'netease';
+    const r = await resolveUrl(best.source || 'netease', best.id);
     if (r && r.url) {
-      audio.crossOrigin = 'anonymous';
-      audio.src = audioSrc(r.url);
-      track._cdnUrl = r.url;
-      try { await audio.play(); } catch (e) {}
-      $('quality-badge').hidden = false;
-      $('quality-badge').textContent = qualityName(r.br);
-      return;
+      track._resolvedAudioUrl = r.url;
+      track._resolvedBr = r.br || 320;
+      return r;
     }
   }
-  toast('未找到该歌曲的备用音源');
-  setBuffering(false);
-  nextTrack();
+  return null;
 }
 
 async function playTrack(index) {
@@ -602,125 +522,86 @@ async function playTrack(index) {
   if (!$('lyrics-panel').hidden && $('lyrics-panel').classList.contains('fullscreen')) syncLyricsAmbient();
   if (!$('now-playing').hidden) syncNowPlaying(track);
   updateQueueUI();
-
-  const isYt = track.source === 'youtube' && (track.ytId || track.youtubeId);
-  const ytVid = isYt ? (track.ytId || track.youtubeId) : null;
-
-  // 1. YouTube 原生播放引擎：直接对应 YouTube 原生音源，绝不转搜网易云
-  if (isYt && ytVid) {
-    track.ytId = ytVid;
-    currentPlaybackEngine = 'youtube';
-    stopYouTubePolling();
-    audio.pause();
-    audio.src = '';
-
-    if (ytPlayer && ytPlayer.loadVideoById) {
-      try {
-        ytPlayer.loadVideoById({ videoId: ytVid, startSeconds: 0 });
-        if (ytPlayer.setVolume) ytPlayer.setVolume(Math.round(audio.volume * 100));
-        $('quality-badge').hidden = false;
-        $('quality-badge').textContent = 'YouTube HD';
-        setBuffering(false);
-        setPlayIcon(true);
-        startYouTubePolling();
-        updateScreenWakeState();
-
-        lyricLines = await loadLyric(track);
-        if (currentTrack() === track) renderLyric(lyricLines);
-        return;
-      } catch (e) {
-        console.warn('YouTube Player load error:', e);
-      }
-    } else {
-      initYouTubePlayerAPI();
-      setTimeout(() => {
-        if (qIndex === index && ytPlayer && ytPlayer.loadVideoById) {
-          try {
-            ytPlayer.loadVideoById({ videoId: ytVid, startSeconds: 0 });
-            if (ytPlayer.setVolume) ytPlayer.setVolume(Math.round(audio.volume * 100));
-            $('quality-badge').hidden = false;
-            $('quality-badge').textContent = 'YouTube HD';
-            setBuffering(false);
-            setPlayIcon(true);
-            startYouTubePolling();
-            updateScreenWakeState();
-          } catch (e) {}
-        }
-      }, 700);
-      lyricLines = await loadLyric(track);
-      if (currentTrack() === track) renderLyric(lyricLines);
-      return;
-    }
-  }
-
-  // 2. HTML5 标准音频流引擎（网易云、JOOX、B站等）
-  currentPlaybackEngine = 'audio';
-  if (ytPlayer && ytPlayer.pauseVideo) {
-    try { ytPlayer.pauseVideo(); } catch (e) {}
-  }
-  stopYouTubePolling();
   tryInitAudioContext();
 
-  // 需要匹配音源的情况（非 YouTube 且标记了 _needMatch）
-  // 遵循用户的原则："哪里来的就找哪里的"，优先在本平台检索匹配，而不是强行搜网易云！
-  if (track._needMatch && !track._matched) {
-    const cleanName = cleanSongTitle(track.name);
-    const query = (cleanName + ' ' + (track.artist || []).join(' ')).trim();
-    const targetSource = (track.source && track.source !== 'all' && track.source !== 'youtube') ? track.source : 'netease';
-    try {
-      let d = await api({ types: 'search', source: targetSource, name: query, count: '5' });
-      let list = Array.isArray(d) ? d : [];
-      if (!list.length && targetSource !== 'netease') {
-        d = await api({ types: 'search', source: 'netease', name: query, count: '5' });
-        list = Array.isArray(d) ? d : [];
-      }
-      if (list.length) {
-        const s = list[0];
-        track.id = String(s.id);
-        track.source = s.source || targetSource;
-        track.pic_id = s.pic_id || '';
-        track.lyric_id = s.lyric_id ? String(s.lyric_id) : String(s.id);
-        if (!track.pic && s.pic) track.pic = s.pic;
-        track._matched = true;
-        const rows = document.querySelectorAll('.track-row');
-        if (rows[index]) rows[index].dataset.key = trackKey(track);
-      } else {
-        toast(`未找到《${track.name}》对应音频，已跳过`);
-        setBuffering(false);
-        nextTrack();
-        return;
-      }
-    } catch (e) {
-      toast('音频匹配失败，已跳过');
+  let r = null;
+
+  // 1. YouTube 歌曲（无论自导歌单、YouTube 搜索还是单曲链接）
+  // 针对公司网络屏蔽 YouTube，通过中转通道智能直通高保真音频流
+  if (track.source === 'youtube') {
+    r = await resolveYouTubeAudioAndLyrics(track);
+    if (!r) {
+      toast(`未能为《${track.name}》解析出音频流，已跳过`);
       setBuffering(false);
       nextTrack();
       return;
     }
-    if (qIndex !== index) return;
-    markPlayingRow();
+    $('quality-badge').hidden = false;
+    $('quality-badge').textContent = 'YouTube 320K';
   }
-
-  // 解析最高可用音质地址
-  let r = await resolveUrl(track.source, track.id);
-  
-  // 若当前音源解析失败（如 JOOX 变灰或空链接），自动尝试全网海外/网易云匹配
-  if (!r && track.source !== 'netease') {
-    try {
+  // 2. 其他平台非 YouTube 歌曲
+  else {
+    if (track._needMatch && !track._matched) {
       const cleanName = cleanSongTitle(track.name);
       const query = (cleanName + ' ' + (track.artist || []).join(' ')).trim();
-      const matched = await api({ types: 'search', source: 'netease', name: query, count: '3' });
-      if (Array.isArray(matched) && matched.length > 0) {
-        const best = matched[0];
-        track.id = String(best.id);
-        track.source = 'netease';
-        track.lyric_id = String(best.lyric_id || best.id);
-        r = await resolveUrl('netease', best.id);
+      const targetSource = (track.source && track.source !== 'all') ? track.source : 'netease';
+      try {
+        let d = await api({ types: 'search', source: targetSource, name: query, count: '5' });
+        let list = Array.isArray(d) ? d : [];
+        if (!list.length && targetSource !== 'netease') {
+          d = await api({ types: 'search', source: 'netease', name: query, count: '5' });
+          list = Array.isArray(d) ? d : [];
+        }
+        if (list.length) {
+          const s = list[0];
+          track.id = String(s.id);
+          track.source = s.source || targetSource;
+          track.pic_id = s.pic_id || '';
+          track.lyric_id = s.lyric_id ? String(s.lyric_id) : String(s.id);
+          if (!track.pic && s.pic) track.pic = s.pic;
+          track._matched = true;
+          const rows = document.querySelectorAll('.track-row');
+          if (rows[index]) rows[index].dataset.key = trackKey(track);
+        } else {
+          toast(`未找到《${track.name}》对应音频，已跳过`);
+          setBuffering(false);
+          nextTrack();
+          return;
+        }
+      } catch (e) {
+        toast('音频匹配失败，已跳过');
+        setBuffering(false);
+        nextTrack();
+        return;
       }
-    } catch (e) {}
+      if (qIndex !== index) return;
+      markPlayingRow();
+    }
+
+    r = await resolveUrl(track.source, track.id);
+    if (!r && track.source !== 'netease') {
+      try {
+        const cleanName = cleanSongTitle(track.name);
+        const query = (cleanName + ' ' + (track.artist || []).join(' ')).trim();
+        const matched = await api({ types: 'search', source: 'netease', name: query, count: '3' });
+        if (Array.isArray(matched) && matched.length > 0) {
+          const best = matched[0];
+          track.id = String(best.id);
+          track.source = 'netease';
+          track.lyric_id = String(best.lyric_id || best.id);
+          r = await resolveUrl('netease', best.id);
+        }
+      } catch (e) {}
+    }
+
+    if (r) {
+      $('quality-badge').hidden = false;
+      $('quality-badge').textContent = qualityName(r.br);
+    }
   }
 
   if (qIndex !== index) return;
-  if (!r) {
+  if (!r || !r.url) {
     toast('这首歌暂无可播放地址，已自动跳过');
     setBuffering(false);
     nextTrack();
@@ -739,7 +620,7 @@ async function playTrack(index) {
     return;
   }
   $('quality-badge').hidden = false;
-  $('quality-badge').textContent = qualityName(r.br);
+  $('quality-badge').textContent = track.source === 'youtube' ? 'YouTube 320K' : qualityName(r.br);
 
   lyricLines = await loadLyric(track);
   if (currentTrack() === track) renderLyric(lyricLines);
@@ -804,19 +685,6 @@ function updateFavBtn() {
 function togglePlay() {
   tryInitAudioContext();
   if (!currentTrack()) { toast('先搜一首歌或打开榜单吧'); return; }
-  if (currentPlaybackEngine === 'youtube' && ytPlayer && ytPlayer.getPlayerState) {
-    try {
-      const state = ytPlayer.getPlayerState();
-      if (state === 1) {
-        ytPlayer.pauseVideo();
-        setPlayIcon(false);
-      } else {
-        ytPlayer.playVideo();
-        setPlayIcon(true);
-      }
-      return;
-    } catch (e) {}
-  }
   if (audio.paused) {
     audio.play();
     setPlayIcon(true);
@@ -1957,9 +1825,6 @@ function startSleepTimer(minutes) {
     const leftMs = sleepEndTime - Date.now();
     if (leftMs <= 0) {
       cancelSleepTimer(false);
-      if (currentPlaybackEngine === 'youtube' && ytPlayer && ytPlayer.pauseVideo) {
-        try { ytPlayer.pauseVideo(); } catch (e) {}
-      }
       audio.pause();
       setPlayIcon(false);
       toast('睡眠定时已到，晚安 🌙', 4000);
@@ -2054,19 +1919,14 @@ function importDataBackup(file) {
 function setAppVolume(val) {
   const v = Math.max(0, Math.min(1, val));
   audio.volume = v;
-  if (ytPlayer && ytPlayer.setVolume) {
-    try { ytPlayer.setVolume(Math.round(v * 100)); } catch (e) {}
-  }
 }
 
 function toggleMute() {
   if (audio.volume > 0) {
     prevVol = audio.volume;
     setAppVolume(0);
-    if (ytPlayer && ytPlayer.mute) try { ytPlayer.mute(); } catch (e) {}
   } else {
     setAppVolume(prevVol || 0.8);
-    if (ytPlayer && ytPlayer.unMute) try { ytPlayer.unMute(); } catch (e) {}
   }
   $('vol-slider').value = Math.round(audio.volume * 100);
   localStorage.setItem('mp_vol', String(audio.volume));
@@ -2084,9 +1944,7 @@ function updateVolIcon() {
 $('progress-wrap').addEventListener('mousemove', (e) => {
   const r = $('progress-wrap').getBoundingClientRect();
   const ratio = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-  const total = (currentPlaybackEngine === 'youtube' && ytPlayer && ytPlayer.getDuration)
-    ? (ytPlayer.getDuration() || 0)
-    : (audio.duration || 0);
+  const total = audio.duration || 0;
   const time = total * ratio;
   const tip = $('progress-tooltip');
   tip.textContent = fmtTime(time);
@@ -2099,10 +1957,7 @@ $('progress-wrap').addEventListener('mouseleave', () => {
 $('progress-wrap').onclick = (e) => {
   const r = e.currentTarget.getBoundingClientRect();
   const ratio = (e.clientX - r.left) / r.width;
-  if (currentPlaybackEngine === 'youtube' && ytPlayer && ytPlayer.seekTo) {
-    const total = ytPlayer.getDuration() || 0;
-    if (total) try { ytPlayer.seekTo(ratio * total, true); } catch (e) {}
-  } else if (audio.duration) {
+  if (audio.duration) {
     audio.currentTime = ratio * audio.duration;
   }
 };
@@ -2428,7 +2283,6 @@ audio.addEventListener('seeked', () => {
 let audioFallbackTried = false;
 audio.addEventListener('error', () => {
   const t = currentTrack();
-  const pb = proxyBase();
   if (t && t._cdnUrl && !audioFallbackTried) {
     audioFallbackTried = true;
     toast('中转连接不畅，尝试直连…');
@@ -2436,6 +2290,10 @@ audio.addEventListener('error', () => {
     audio.removeAttribute('crossorigin');
     audio.src = t._cdnUrl;
     audio.play().catch(() => {});
+  } else {
+    setBuffering(false);
+    toast(`《${t ? t.name : '当前歌曲'}》音频加载失败，已自动跳过`);
+    nextTrack(false);
   }
 });
 
@@ -2609,8 +2467,7 @@ function shouldKeepScreenAwake() {
   const lyricsOpen = $('lyrics-panel') && !$('lyrics-panel').hidden;
   const nowPlayingOpen = $('now-playing') && !$('now-playing').hidden;
   const isAudioPlaying = !audio.paused && !audio.ended && audio.currentTime > 0;
-  const isYtPlaying = currentPlaybackEngine === 'youtube' && ytPlayer && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === 1;
-  return lyricsOpen || nowPlayingOpen || isAudioPlaying || isYtPlaying;
+  return lyricsOpen || nowPlayingOpen || isAudioPlaying;
 }
 
 function updateScreenWakeState() {
@@ -2683,4 +2540,3 @@ renderCharts();
 renderSearchTags();
 updateQueueUI();
 updateScreenWakeState();
-initYouTubePlayerAPI();
