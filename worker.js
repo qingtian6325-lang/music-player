@@ -36,6 +36,13 @@ export default {
       return cors(new Response(null, { status: 204 }));
     }
 
+    // 0) 时间戳对齐：为 GDStudio 签名提供一致的秒级 UNIX 时间戳
+    if (url.pathname === '/time') {
+      return cors(new Response(String(Math.floor(Date.now() / 1000)), {
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      }));
+    }
+
     // 1) API 中转：优先尝试 GDStudio，失败或无数据时自然降级至 Meting 节点
     if (url.pathname === '/api') {
       const customUpstream = url.searchParams.get('upstream');
@@ -44,11 +51,13 @@ export default {
 
       const tryEndpoints = [];
       if (customUpstream) {
-        tryEndpoints.push(customUpstream.replace(/\/$/, ''));
+        tryEndpoints.push(customUpstream.trim());
       }
       // 默认瀑布降级链：GDStudio 优先 -> 失败或异常自然流转至 Meting 高速节点
-      tryEndpoints.push('https://music.gdstudio.xyz');
+      tryEndpoints.push('https://music.gdstudio.xyz/api.php');
       tryEndpoints.push('https://met.liiiu.cn/meting/api');
+      tryEndpoints.push('https://api.qijieya.cn/meting/');
+      tryEndpoints.push('https://api.injahow.cn/meting/');
 
       let lastError = null;
       for (const base of tryEndpoints) {
@@ -56,16 +65,21 @@ export default {
         const isMeting = /meting/i.test(base) || !/api\.php/i.test(base);
         if (isMeting) {
           const types = searchParams.get('types');
+          const server = searchParams.get('source') || 'netease';
+          const nameVal = searchParams.get('name') || '';
+          const idVal = searchParams.get('id') || '';
+          const metingBase = base.includes('/api') ? base : (base.endsWith('/') ? base : base + '/');
+          const sep = metingBase.includes('?') ? '&' : '?';
           if (types === 'search') {
-            target = `${base}?server=${searchParams.get('source') || 'netease'}&type=search&id=${encodeURIComponent(searchParams.get('name') || '')}`;
+            target = `${metingBase}${sep}server=${server}&type=search&id=${encodeURIComponent(nameVal)}`;
           } else if (types === 'url') {
-            target = `${base}?server=${searchParams.get('source') || 'netease'}&type=url&id=${searchParams.get('id') || ''}`;
+            target = `${metingBase}${sep}server=${server}&type=url&id=${idVal}`;
           } else if (types === 'lyric') {
-            target = `${base}?server=${searchParams.get('source') || 'netease'}&type=lrc&id=${searchParams.get('id') || ''}`;
+            target = `${metingBase}${sep}server=${server}&type=lrc&id=${idVal}`;
           } else if (types === 'playlist') {
-            target = `${base}?server=${searchParams.get('source') || 'netease'}&type=playlist&id=${searchParams.get('id') || ''}`;
+            target = `${metingBase}${sep}server=${server}&type=playlist&id=${idVal}`;
           } else {
-            target = base + (searchParams.toString() ? '?' + searchParams.toString() : '');
+            target = metingBase + (searchParams.toString() ? sep + searchParams.toString() : '');
           }
         } else {
           target = base + (base.endsWith('api.php') ? '' : '/api.php') + (searchParams.toString() ? '?' + searchParams.toString() : '');

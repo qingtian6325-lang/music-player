@@ -14,10 +14,16 @@ const API_PRESETS = [
   { id: 'injahow', name: '⚡ Injahow 节点 (备用 · 歌单/音频流)', url: 'https://api.injahow.cn/meting/' }
 ];
 function currentApiSource() {
-  return (localStorage.getItem('mp_api_source') || DEFAULT_API_SOURCE).trim().replace(/\/$/, '');
+  return (localStorage.getItem('mp_api_source') || DEFAULT_API_SOURCE).trim();
 }
 function isMetingUrl(u) {
   return /meting/i.test(u) || !/api\.php/i.test(u);
+}
+/* GDStudio 专用的 URL 字符安全转义算法 (与 GDStudio ajax.js 官方实现完全一致) */
+function gdUrlEncode(a) {
+  if (a == null) return '';
+  typeof a !== 'string' && (a = String(a));
+  return encodeURIComponent(a).replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/\*/g, '%2A').replace(/'/g, '%27').replace(/!/g, '%21');
 }
 const BR_FALLBACK = [999, 740, 320, 128];
 
@@ -95,9 +101,18 @@ async function api(params) {
     const isMeting = isMetingUrl(ep);
     try {
       if (isMeting) {
+        const metingBase = ep.includes('/api') ? ep : (ep.endsWith('/') ? ep : ep + '/');
+        const sep = metingBase.includes('?') ? '&' : '?';
+        const proxy = proxyBase();
+
         if (types === 'playlist') {
-          const u = `${ep}?server=${server}&type=playlist&id=${id}`;
-          const list = await fetchJson(u);
+          const u = `${metingBase}${sep}server=${server}&type=playlist&id=${id}`;
+          let list = null;
+          if (proxy) {
+            try { list = await fetchJson(`${proxy}/api?upstream=${encodeURIComponent(ep)}&types=playlist&source=${server}&id=${id}`); } catch (e) {}
+            if (list && list.error) list = null;
+          }
+          if (!list) list = await fetchJson(u);
           if (Array.isArray(list) && list.length > 0) {
             return {
               playlist: {
@@ -123,8 +138,13 @@ async function api(params) {
             };
           }
         } else if (types === 'search') {
-          const u = `${ep}?server=${server}&type=search&id=${encodeURIComponent(name)}`;
-          const list = await fetchJson(u);
+          const u = `${metingBase}${sep}server=${server}&type=search&id=${encodeURIComponent(name)}`;
+          let list = null;
+          if (proxy) {
+            try { list = await fetchJson(`${proxy}/api?upstream=${encodeURIComponent(ep)}&types=search&source=${server}&name=${encodeURIComponent(name)}`); } catch (e) {}
+            if (list && list.error) list = null;
+          }
+          if (!list) list = await fetchJson(u);
           if (Array.isArray(list) && list.length > 0) {
             return list.map((item, idx) => {
               const urlMatch = (item.url || '').match(/id=([^&]+)/);
@@ -145,45 +165,81 @@ async function api(params) {
             });
           }
         } else if (types === 'url') {
-          const u = `${ep}?server=${server}&type=url&id=${id}`;
+          const u = `${metingBase}${sep}server=${server}&type=url&id=${id}`;
           return { url: u, br: 320 };
         } else if (types === 'lyric') {
-          const u = `${ep}?server=${server}&type=lrc&id=${id}`;
-          const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(4000) });
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          const text = await res.text();
+          const u = `${metingBase}${sep}server=${server}&type=lrc&id=${id}`;
+          let text = '';
+          if (proxy) {
+            try {
+              const res = await fetch(`${proxy}/api?upstream=${encodeURIComponent(ep)}&types=lyric&source=${server}&id=${id}`, { signal: AbortSignal.timeout(4000) });
+              if (res.ok) text = await res.text();
+            } catch (e) {}
+          }
+          if (!text) {
+            const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(4000) });
+            if (res.ok) text = await res.text();
+          }
           if (text && text.includes('[')) {
             return { lyric: text, tlyric: '' };
           }
         } else if (types === 'pic') {
-          return { url: `${ep}?server=${server}&type=pic&id=${id}` };
+          return { url: `${metingBase}${sep}server=${server}&type=pic&id=${id}` };
         }
       } else {
-        // GDStudio (api.php)
-        const qParams = { ...params };
+        // GDStudio (api.php) - 参数与官方 HAR 协议严格对齐
+        let qs = '';
         let signKey = '';
-        if (params.types === 'playlist' || params.types === 'userlist') signKey = encodeURIComponent(String(params.id || ''));
-        else if (params.types === 'url' || params.types === 'pic') signKey = encodeURIComponent(String(params.id || ''));
-        else if (params.types === 'lyric') signKey = encodeURIComponent(String(params.lyric_id || params.id || ''));
-        else if (params.types === 'search') signKey = encodeURIComponent(String(params.name || ''));
-        else signKey = encodeURIComponent(String(params.id || params.name || ''));
-
-        if (typeof window !== 'undefined' && typeof window.crc32 === 'function' && signKey) {
-          try {
-            qParams.s = window.crc32(signKey);
-          } catch (e) {}
+        if (types === 'search') {
+          const encName = gdUrlEncode(name);
+          signKey = encName;
+          let s = '';
+          if (typeof window !== 'undefined' && typeof window.crc32 === 'function') {
+            try { s = window.crc32(signKey); } catch (e) {}
+          }
+          qs = `types=search&count=${count || 20}&source=${source || 'netease'}&pages=${pages || 1}&name=${encName}${s ? '&s=' + s : ''}`;
+        } else if (types === 'playlist' || types === 'userlist') {
+          signKey = String(id || '');
+          let s = '';
+          if (typeof window !== 'undefined' && typeof window.crc32 === 'function') {
+            try { s = window.crc32(signKey); } catch (e) {}
+          }
+          qs = `types=${types}&id=${encodeURIComponent(signKey)}${s ? '&s=' + s : ''}`;
+        } else if (types === 'url') {
+          signKey = String(id || '');
+          let s = '';
+          if (typeof window !== 'undefined' && typeof window.crc32 === 'function') {
+            try { s = window.crc32(signKey); } catch (e) {}
+          }
+          qs = `types=url&id=${encodeURIComponent(signKey)}&source=${source || 'netease'}&br=${br || 320}${s ? '&s=' + s : ''}`;
+        } else if (types === 'lyric') {
+          signKey = String(params.lyric_id || id || '');
+          let s = '';
+          if (typeof window !== 'undefined' && typeof window.crc32 === 'function') {
+            try { s = window.crc32(signKey); } catch (e) {}
+          }
+          qs = `types=lyric&id=${encodeURIComponent(signKey)}&source=${source || 'netease'}${s ? '&s=' + s : ''}`;
+        } else if (types === 'pic') {
+          signKey = String(id || '');
+          let s = '';
+          if (typeof window !== 'undefined' && typeof window.crc32 === 'function') {
+            try { s = window.crc32(signKey); } catch (e) {}
+          }
+          qs = `types=pic&id=${encodeURIComponent(signKey)}&source=${source || 'netease'}&size=300${s ? '&s=' + s : ''}`;
+        } else {
+          qs = new URLSearchParams(params).toString();
         }
 
-        const q = new URLSearchParams(qParams).toString();
         const proxy = proxyBase();
         let data = null;
         if (proxy) {
           try {
-            data = await fetchJson(`${proxy}/api?upstream=${encodeURIComponent(ep)}&${q}`);
+            data = await fetchJson(`${proxy}/api?upstream=${encodeURIComponent(ep)}&${qs}`);
+            if (data && (data.error || data.detail)) data = null;
           } catch (e) {}
         }
         if (!data) {
-          const u = `${ep}?${q}`;
+          const u = `${ep}?${qs}`;
           const res = await fetch(u, {
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
