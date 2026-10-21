@@ -316,19 +316,84 @@ async function parseYTPlaylist(pageUrl) {
   try { name = d.metadata.playlistMetadataRenderer.title || name; } catch (e) {}
   const tracks = [];
   try {
-    const sections = d.contents.twoColumnBrowseResultsRenderer.tabs[0]
-      .tabRenderer.content.sectionListRenderer.contents;
+    const tabs = d.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
+    const sections = tabs[0]?.tabRenderer?.content?.sectionListRenderer?.contents || [];
     for (const sec of sections) {
-      const items = (((sec || {}).itemSectionRenderer || {}).contents) || [];
+      const items = (sec?.itemSectionRenderer?.contents) || [];
       for (const it of items) {
-        const vm = it.lockupViewModel;
-        if (!vm) continue;
-        const md = ((vm.metadata || {}).lockupMetadataViewModel) || {};
-        const title = (md.title || {}).content || '';
-        const thumbJson = JSON.stringify(vm.contentImage || {});
-        const vm2 = thumbJson.match(/\/vi\/([a-zA-Z0-9_-]{11})\//);
-        const vid = vm2 ? vm2[1] : '';
-        if (title) tracks.push({ title, artist: '', youtubeId: vid });
+        // 兼容 lockupViewModel (现代 YouTube 排版)
+        if (it.lockupViewModel) {
+          const vm = it.lockupViewModel;
+          const vid = vm.contentId || '';
+          const md = vm.metadata?.lockupMetadataViewModel;
+          const title = md?.title?.content || '';
+          
+          let artist = '';
+          const rows = md?.metadata?.contentMetadataViewModel?.metadataRows || [];
+          for (const row of rows) {
+            for (const part of (row.parts || [])) {
+              const c = part.text?.content || '';
+              if (c && !c.includes('views') && !c.includes('ago') && !c.includes('观看') && !c.includes('前')) {
+                artist = c;
+                break;
+              }
+            }
+            if (artist) break;
+          }
+          if (!artist) {
+            const parts = title.split(' - ');
+            if (parts.length >= 2) artist = parts[0].trim();
+          }
+
+          let durSec = 0;
+          const overlays = vm.contentImage?.thumbnailViewModel?.overlays || [];
+          for (const ov of overlays) {
+            const bList = ov.thumbnailBottomOverlayViewModel?.badges || [];
+            for (const b of bList) {
+              const txt = b.thumbnailBadgeViewModel?.text || '';
+              if (txt && txt.includes(':')) {
+                const parts = txt.split(':').map(Number);
+                if (parts.length === 2) durSec = parts[0] * 60 + parts[1];
+                else if (parts.length === 3) durSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
+              }
+            }
+          }
+
+          const pic = vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : '';
+          if (title && vid) {
+            tracks.push({
+              title,
+              artist: artist || 'YouTube',
+              youtubeId: vid,
+              pic,
+              duration: durSec,
+              source: 'youtube'
+            });
+          }
+        }
+        // 兼容 playlistVideoRenderer (经典 YouTube 排版)
+        else if (it.playlistVideoRenderer) {
+          const pvr = it.playlistVideoRenderer;
+          const vid = pvr.videoId || '';
+          const title = pvr.title?.runs?.[0]?.text || pvr.title?.simpleText || '';
+          let artist = pvr.shortBylineText?.runs?.[0]?.text || '';
+          if (!artist) {
+            const parts = title.split(' - ');
+            if (parts.length >= 2) artist = parts[0].trim();
+          }
+          const durSec = parseInt(pvr.lengthSeconds || '0', 10) || 0;
+          const pic = vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : '';
+          if (title && vid) {
+            tracks.push({
+              title,
+              artist: artist || 'YouTube',
+              youtubeId: vid,
+              pic,
+              duration: durSec,
+              source: 'youtube'
+            });
+          }
+        }
         if (tracks.length >= 200) break;
       }
       if (tracks.length >= 200) break;
