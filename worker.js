@@ -36,39 +36,55 @@ export default {
       return cors(new Response(null, { status: 204 }));
     }
 
-    // 1) API 中转：支持动态指定上游或默认 Meting 高速节点
+    // 1) API 中转：优先尝试 GDStudio，失败或无数据时自然降级至 Meting 节点
     if (url.pathname === '/api') {
       const customUpstream = url.searchParams.get('upstream');
-      const base = (customUpstream || UPSTREAM_API).replace(/\/$/, '');
       const searchParams = new URLSearchParams(url.search);
       searchParams.delete('upstream');
-      let target = '';
-      if (/meting/i.test(base) || !/api\.php/i.test(base)) {
-        const types = searchParams.get('types');
-        if (types === 'search') {
-          target = `${base}?server=${searchParams.get('source') || 'netease'}&type=search&id=${encodeURIComponent(searchParams.get('name') || '')}`;
-        } else if (types === 'url') {
-          target = `${base}?server=${searchParams.get('source') || 'netease'}&type=url&id=${searchParams.get('id') || ''}`;
-        } else if (types === 'lyric') {
-          target = `${base}?server=${searchParams.get('source') || 'netease'}&type=lrc&id=${searchParams.get('id') || ''}`;
-        } else if (types === 'playlist') {
-          target = `${base}?server=${searchParams.get('source') || 'netease'}&type=playlist&id=${searchParams.get('id') || ''}`;
+
+      const tryEndpoints = [];
+      if (customUpstream) {
+        tryEndpoints.push(customUpstream.replace(/\/$/, ''));
+      }
+      // 默认瀑布降级链：GDStudio 优先 -> 失败或异常自然流转至 Meting 高速节点
+      tryEndpoints.push('https://music-api.gdstudio.xyz');
+      tryEndpoints.push('https://met.liiiu.cn/meting/api');
+
+      let lastError = null;
+      for (const base of tryEndpoints) {
+        let target = '';
+        const isMeting = /meting/i.test(base) || !/api\.php/i.test(base);
+        if (isMeting) {
+          const types = searchParams.get('types');
+          if (types === 'search') {
+            target = `${base}?server=${searchParams.get('source') || 'netease'}&type=search&id=${encodeURIComponent(searchParams.get('name') || '')}`;
+          } else if (types === 'url') {
+            target = `${base}?server=${searchParams.get('source') || 'netease'}&type=url&id=${searchParams.get('id') || ''}`;
+          } else if (types === 'lyric') {
+            target = `${base}?server=${searchParams.get('source') || 'netease'}&type=lrc&id=${searchParams.get('id') || ''}`;
+          } else if (types === 'playlist') {
+            target = `${base}?server=${searchParams.get('source') || 'netease'}&type=playlist&id=${searchParams.get('id') || ''}`;
+          } else {
+            target = base + (searchParams.toString() ? '?' + searchParams.toString() : '');
+          }
         } else {
-          target = base + (searchParams.toString() ? '?' + searchParams.toString() : '');
+          target = base + (base.endsWith('api.php') ? '' : '/api.php') + (searchParams.toString() ? '?' + searchParams.toString() : '');
         }
-      } else {
-        target = base + (searchParams.toString() ? '?' + searchParams.toString() : '');
+
+        try {
+          const r = await fetch(target, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          const body = await r.text();
+          if (body.includes('Turnstile') || body.includes('Invalid request.')) throw new Error('Upstream challenge/invalid');
+          return cors(new Response(body, {
+            status: r.status,
+            headers: { 'Content-Type': r.headers.get('content-type') || 'application/json; charset=utf-8' },
+          }));
+        } catch (e) {
+          lastError = e;
+        }
       }
-      try {
-        const r = await fetch(target, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        const body = await r.text();
-        return cors(new Response(body, {
-          status: r.status,
-          headers: { 'Content-Type': r.headers.get('content-type') || 'application/json; charset=utf-8' },
-        }));
-      } catch (e) {
-        return cors(new Response(JSON.stringify({ error: 'upstream failed' }), { status: 502 }));
-      }
+      return cors(new Response(JSON.stringify({ error: 'all upstreams failed: ' + (lastError?.message || '') }), { status: 502 }));
     }
 
     // 2) 音频流式中转：/audio?src=<直链> ，透传 Range 实现秒播 + 拖动
@@ -133,6 +149,25 @@ export default {
       try {
         const info = await getYouTubeInfo(vid);
         return cors(new Response(JSON.stringify(info), {
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        }));
+      } catch (e) {
+        return cors(new Response(JSON.stringify({ error: String((e && e.message) || e) }), { status: 500 }));
+      }
+    }
+
+    // 7) YouTube 原生高保真音频流与字幕歌词提取：/yt-player?id=<vid> 或 ?url=<url>
+    if (url.pathname === '/yt-player') {
+      const qUrl = url.searchParams.get('url') || '';
+      let vid = url.searchParams.get('id') || '';
+      if (!vid && qUrl) {
+        const m = qUrl.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+        if (m) vid = m[1];
+      }
+      if (!vid) return cors(new Response(JSON.stringify({ error: 'invalid video id' }), { status: 400 }));
+      try {
+        const data = await getYouTubePlayer(vid);
+        return cors(new Response(JSON.stringify(data), {
           headers: { 'Content-Type': 'application/json; charset=utf-8' },
         }));
       } catch (e) {
@@ -421,4 +456,63 @@ async function parseYTPlaylist(pageUrl) {
   } catch (e) {}
   if (!tracks.length) throw new Error('没找到曲目，可能是私密歌单或地区限制');
   return { name, tracks, platform: 'youtube' };
+}
+
+/* ---------- YouTube 原生音频与同步歌词解析器 ---------- */
+async function getYouTubePlayer(vid) {
+  const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${YT_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      videoId: vid,
+      context: {
+        client: {
+          clientName: 'ANDROID_VR',
+          clientVersion: '1.61.48'
+        }
+      }
+    })
+  });
+  if (!res.ok) throw new Error('YouTube Player request failed: ' + res.status);
+  const d = await res.json();
+  const formats = d.streamingData?.adaptiveFormats || [];
+  const audios = formats.filter(f => f.mimeType && f.mimeType.startsWith('audio/'));
+  if (!audios.length) throw new Error('No audio formats found for video ' + vid);
+
+  audios.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+  const selected = audios.find(a => a.mimeType.includes('audio/mp4')) || audios[0];
+
+  let lyrics = '';
+  const captions = d.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+  if (captions.length) {
+    const cUrl = captions.find(c => c.languageCode === 'zh' || c.languageCode === 'zh-Hans' || c.languageCode === 'zh-Hant') || captions[0];
+    try {
+      const capRes = await fetch(cUrl.baseUrl);
+      const text = await capRes.text();
+      const lrcLines = [];
+      const regex = /<p t="(\d+)"[^>]*>([\s\S]*?)<\/p>/g;
+      let m;
+      while ((m = regex.exec(text)) !== null) {
+        const ms = parseInt(m[1], 10);
+        const clean = m[2].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
+        if (clean) {
+          const sec = Math.floor(ms / 1000);
+          const cent = Math.floor((ms % 1000) / 10);
+          const timeStr = '[' + String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0') + '.' + String(cent).padStart(2, '0') + ']';
+          lrcLines.push(timeStr + clean);
+        }
+      }
+      lyrics = lrcLines.join('\n');
+    } catch (e) {}
+  }
+
+  return {
+    audioUrl: selected.url,
+    bitrate: selected.bitrate || 128000,
+    mimeType: selected.mimeType,
+    duration: parseInt(d.videoDetails?.lengthSeconds || '0', 10),
+    title: d.videoDetails?.title || '',
+    author: d.videoDetails?.author || '',
+    lyrics
+  };
 }

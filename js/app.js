@@ -1,9 +1,17 @@
-/* 音乐播放器 - 多源聚合版 (支持随时自由切换 Meting / 自建 API 服务) */
-const DEFAULT_API_SOURCE = 'https://met.liiiu.cn/meting/api';
+/* 音乐播放器 - 多源聚合版 (GDStudio 优先 · 支持 Meting/Qijieya 智能瀑布容灾降级) */
+const GDSTUDIO_SOURCE = 'https://music-api.gdstudio.xyz/api.php';
+const DEFAULT_API_SOURCE = GDSTUDIO_SOURCE;
+const FAILOVER_SOURCES = [
+  'https://music-api.gdstudio.xyz/api.php',
+  'https://met.liiiu.cn/meting/api',
+  'https://api.qijieya.cn/meting/',
+  'https://api.injahow.cn/meting/'
+];
 const API_PRESETS = [
-  { id: 'liiiu', name: 'Meting 全网高速节点 (推荐 · 快速稳定)', url: 'https://met.liiiu.cn/meting/api' },
-  { id: 'injahow', name: 'Injahow 节点 (备用 · 歌单/音频流)', url: 'https://api.injahow.cn/meting/' },
-  { id: 'qijieya', name: 'Qijieya 节点 (备用 · VIP/黑胶解析)', url: 'https://api.qijieya.cn/meting/' }
+  { id: 'gdstudio', name: '🌟 GDStudio (默认主源 · 失败智能容灾多源降级)', url: 'https://music-api.gdstudio.xyz/api.php' },
+  { id: 'liiiu', name: '🚀 Meting 全网高速节点 (快速稳定)', url: 'https://met.liiiu.cn/meting/api' },
+  { id: 'qijieya', name: '🛡️ Qijieya 节点 (支持 VIP/黑胶解析)', url: 'https://api.qijieya.cn/meting/' },
+  { id: 'injahow', name: '⚡ Injahow 节点 (备用 · 歌单/音频流)', url: 'https://api.injahow.cn/meting/' }
 ];
 function currentApiSource() {
   return (localStorage.getItem('mp_api_source') || DEFAULT_API_SOURCE).trim().replace(/\/$/, '');
@@ -73,48 +81,31 @@ async function fetchJson(url) {
   if (!res.ok) throw new Error('网络请求失败 ' + res.status);
   return res.json();
 }
+
+/* 智能多源瀑布降级调度引擎：
+ * 优先使用主源（默认 GDStudio），一旦无数据或异常，自然逐级顺延至 Meting / Qijieya / Injahow 等备用源
+ */
 async function api(params) {
-  const apiSource = currentApiSource();
-  const isMeting = isMetingUrl(apiSource);
+  const primary = currentApiSource();
+  const candidates = [primary, ...FAILOVER_SOURCES.filter(s => s !== primary)];
+  const { types, source = 'netease', name = '', id = '', br = '320', count = '20', pages = '1' } = params;
+  const server = (source === 'tencent' || source === 'qq') ? 'tencent' : 'netease';
 
-  // 1. Meting 规范节点 (支持全网搜索、网易云、QQ音乐、歌单、音频流)
-  if (isMeting) {
-    const { types, source = 'netease', name = '', id = '', count = '20', pages = '1' } = params;
-    const server = (source === 'tencent' || source === 'qq') ? 'tencent' : 'netease';
-
-    if (types === 'search') {
-      try {
-        const u = `${apiSource}?server=${server}&type=search&id=${encodeURIComponent(name)}`;
-        const list = await fetchJson(u);
-        if (!Array.isArray(list)) return [];
-        return list.map((item, idx) => {
-          const urlMatch = (item.url || '').match(/id=([^&]+)/);
-          const lrcMatch = (item.lrc || '').match(/id=([^&]+)/);
-          const trackId = String(item.id || (urlMatch ? urlMatch[1] : `tid_${idx}`));
-          return {
-            id: trackId,
-            name: item.title || item.name || '未知曲目',
-            artist: Array.isArray(item.author) ? item.author : Array.isArray(item.artist) ? item.artist : String(item.author || item.artist || '未知歌手').split('/'),
-            album: item.album || '',
-            pic: item.pic || '',
-            pic_id: '',
-            lyric_id: lrcMatch ? lrcMatch[1] : trackId,
-            source: server,
-            duration: item.duration || 0,
-            _directUrl: item.url || ''
-          };
-        });
-      } catch (err) {
-        for (const preset of API_PRESETS) {
-          if (preset.url !== apiSource) {
-            try {
-              const u = `${preset.url}?server=${server}&type=search&id=${encodeURIComponent(name)}`;
-              const list = await fetchJson(u);
-              if (Array.isArray(list) && list.length > 0) {
-                return list.map((item, idx) => {
+  for (const ep of candidates) {
+    const isMeting = isMetingUrl(ep);
+    try {
+      if (isMeting) {
+        if (types === 'playlist') {
+          const u = `${ep}?server=${server}&type=playlist&id=${id}`;
+          const list = await fetchJson(u);
+          if (Array.isArray(list) && list.length > 0) {
+            return {
+              playlist: {
+                name: '官方精选榜单',
+                tracks: list.map((item, idx) => {
                   const urlMatch = (item.url || '').match(/id=([^&]+)/);
                   const lrcMatch = (item.lrc || '').match(/id=([^&]+)/);
-                  const trackId = String(item.id || (urlMatch ? urlMatch[1] : `tid_${idx}`));
+                  const trackId = String(item.id || (urlMatch ? urlMatch[1] : `pl_${id}_${idx}`));
                   return {
                     id: trackId,
                     name: item.title || item.name || '未知曲目',
@@ -127,53 +118,18 @@ async function api(params) {
                     duration: item.duration || 0,
                     _directUrl: item.url || ''
                   };
-                });
+                })
               }
-            } catch (e) {}
+            };
           }
-        }
-        return [];
-      }
-    }
-
-    if (types === 'url') {
-      const u = `${apiSource}?server=${server}&type=url&id=${id}`;
-      return { url: u, br: 320 };
-    }
-
-    if (types === 'lyric') {
-      try {
-        const u = `${apiSource}?server=${server}&type=lrc&id=${id}`;
-        const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        const text = await res.text();
-        return { lyric: text, tlyric: '' };
-      } catch (err) {
-        for (const preset of API_PRESETS) {
-          if (preset.url !== apiSource) {
-            try {
-              const u = `${preset.url}?server=${server}&type=lrc&id=${id}`;
-              const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-              const text = await res.text();
-              if (text && text.includes('[')) return { lyric: text, tlyric: '' };
-            } catch (e) {}
-          }
-        }
-        return { lyric: '', tlyric: '' };
-      }
-    }
-
-    if (types === 'playlist') {
-      try {
-        const u = `${apiSource}?server=${server}&type=playlist&id=${id}`;
-        const d = await fetchJson(u);
-        if (!Array.isArray(d)) return { playlist: { tracks: [] } };
-        return {
-          playlist: {
-            name: '官方精选榜单',
-            tracks: d.map((item, idx) => {
+        } else if (types === 'search') {
+          const u = `${ep}?server=${server}&type=search&id=${encodeURIComponent(name)}`;
+          const list = await fetchJson(u);
+          if (Array.isArray(list) && list.length > 0) {
+            return list.map((item, idx) => {
               const urlMatch = (item.url || '').match(/id=([^&]+)/);
               const lrcMatch = (item.lrc || '').match(/id=([^&]+)/);
-              const trackId = String(item.id || (urlMatch ? urlMatch[1] : `pl_${id}_${idx}`));
+              const trackId = String(item.id || (urlMatch ? urlMatch[1] : `tid_${idx}`));
               return {
                 id: trackId,
                 name: item.title || item.name || '未知曲目',
@@ -186,56 +142,55 @@ async function api(params) {
                 duration: item.duration || 0,
                 _directUrl: item.url || ''
               };
-            })
+            });
           }
-        };
-      } catch (err) {
-        for (const preset of API_PRESETS) {
-          if (preset.url !== apiSource) {
-            try {
-              const u = `${preset.url}?server=${server}&type=playlist&id=${id}`;
-              const d = await fetchJson(u);
-              if (Array.isArray(d) && d.length > 0) {
-                return {
-                  playlist: {
-                    name: '官方精选榜单',
-                    tracks: d.map((item, idx) => {
-                      const urlMatch = (item.url || '').match(/id=([^&]+)/);
-                      const lrcMatch = (item.lrc || '').match(/id=([^&]+)/);
-                      const trackId = String(item.id || (urlMatch ? urlMatch[1] : `pl_${id}_${idx}`));
-                      return {
-                        id: trackId,
-                        name: item.title || item.name || '未知曲目',
-                        artist: Array.isArray(item.author) ? item.author : Array.isArray(item.artist) ? item.artist : String(item.author || item.artist || '未知歌手').split('/'),
-                        album: item.album || '',
-                        pic: item.pic || '',
-                        pic_id: '',
-                        lyric_id: lrcMatch ? lrcMatch[1] : trackId,
-                        source: server,
-                        duration: item.duration || 0,
-                        _directUrl: item.url || ''
-                      };
-                    })
-                  }
-                };
-              }
-            } catch (e) {}
+        } else if (types === 'url') {
+          const u = `${ep}?server=${server}&type=url&id=${id}`;
+          return { url: u, br: 320 };
+        } else if (types === 'lyric') {
+          const u = `${ep}?server=${server}&type=lrc&id=${id}`;
+          const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(4000) });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const text = await res.text();
+          if (text && text.includes('[')) {
+            return { lyric: text, tlyric: '' };
           }
+        } else if (types === 'pic') {
+          return { url: `${ep}?server=${server}&type=pic&id=${id}` };
         }
-        return { playlist: { tracks: [] } };
+      } else {
+        // GDStudio (api.php)
+        const q = new URLSearchParams(params).toString();
+        const proxy = proxyBase();
+        let data = null;
+        if (proxy) {
+          try {
+            data = await fetchJson(`${proxy}/api?upstream=${encodeURIComponent(ep)}&${q}`);
+          } catch (e) {}
+        }
+        if (!data) {
+          const u = `${ep}?${q}`;
+          const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(3000) });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          data = await res.json();
+        }
+        if (!data || data.detail || data.error) throw new Error((data && (data.detail || data.error)) || 'GDStudio error');
+        if (types === 'playlist' && data.playlist && data.playlist.tracks && data.playlist.tracks.length > 0) return data;
+        if (types === 'search' && Array.isArray(data) && data.length > 0) return data;
+        if (types === 'url' && data.url) return data;
+        if (types === 'lyric' && (data.lyric || data.tlyric)) return data;
+        if (types === 'pic' && data.url) return data;
+        throw new Error('GDStudio response empty');
       }
+    } catch (err) {
+      // 当前源请求异常或无数据，自然降级至列表中的下一个备用音源
     }
   }
 
-  // 2. 自定义兼容或 MKOnlinePlayer api.php 节点
-  const q = new URLSearchParams(params).toString();
-  const proxy = proxyBase();
-  if (proxy) {
-    try {
-      return await fetchJson(proxy + '/api?upstream=' + encodeURIComponent(apiSource) + '&' + q);
-    } catch (e) {}
-  }
-  return fetchJson(apiSource + (apiSource.includes('?') ? '&' : '?') + q);
+  if (types === 'playlist') return { playlist: { tracks: [] } };
+  if (types === 'search') return [];
+  if (types === 'lyric') return { lyric: '', tlyric: '' };
+  return null;
 }
 /* 音频地址：设置了中转则走 Worker 流式转发，否则直链 */
 function audioSrc(cdnUrl) {
@@ -369,6 +324,15 @@ async function loadLyric(track) {
   if (lyricCache.has(key)) return lyricCache.get(key);
   let lines = [];
   try {
+    // 1. YouTube 原生歌词：优先使用 YouTube 自带的同步时间轴字幕
+    if (track.source === 'youtube' && track._rawLrc) {
+      lines = parseLrc(track._rawLrc, '');
+      if (lines.length) {
+        lyricCache.set(key, lines);
+        return lines;
+      }
+    }
+
     let lid = track.lyric_id;
     let lsrc = track._lyricSource || (track.source === 'youtube' ? 'netease' : track.source);
 
@@ -619,59 +583,63 @@ function updateQueueUI() {
   renderQueueDrawer();
 }
 
-/* ---------- YouTube 歌曲智能音频与歌词解析器 (办公室内网穿透) ---------- */
+/* ---------- YouTube 歌曲原生音频与同步歌词解析器 (办公室内网穿透) ---------- */
 async function resolveYouTubeAudioAndLyrics(track) {
-  if (track._resolvedAudioUrl && track.lyric_id) {
+  if (track._resolvedAudioUrl) {
     return { url: track._resolvedAudioUrl, br: track._resolvedBr || 320 };
   }
-  const cleanName = cleanSongTitle(track.name);
-  const artistStr = (track.artist || []).filter(a => a !== 'YouTube').join(' ');
+  const vid = track.youtubeId || track.ytId || (track.id || '').replace(/^yt_/, '');
+  if (!vid) return null;
 
-  // 1. 完整检索 "歌名 歌手"
-  let query = (cleanName + ' ' + artistStr).trim();
-  let list = [];
-  try {
-    const d = await api({ types: 'search', source: 'netease', name: query, count: '3' });
-    if (Array.isArray(d) && d.length > 0) list = d;
-  } catch (e) {}
+  const proxy = proxyBase();
+  let info = null;
 
-  // 2. 如果标题包含 " - "，尝试颠倒顺序检索 "后半部分 前半部分"
-  if (!list.length && cleanName.includes(' - ')) {
-    const parts = cleanName.split(' - ');
+  // 1. 优先通过 Worker /yt-player 获取 YouTube 原生高保真音频流及字幕
+  if (proxy) {
     try {
-      const d = await api({ types: 'search', source: 'netease', name: `${parts[1]} ${parts[0]}`.trim(), count: '3' });
-      if (Array.isArray(d) && d.length > 0) list = d;
+      info = await fetchJson(`${proxy}/yt-player?id=${encodeURIComponent(vid)}`);
     } catch (e) {}
   }
 
-  // 3. 仅用歌名部分检索
-  if (!list.length && cleanName.includes(' - ')) {
-    const songOnly = cleanName.split(' - ')[1].trim();
+  // 2. 如果 Worker 未配置或未响应，尝试直接从 YouTube 接口获取
+  if (!info || !info.audioUrl) {
     try {
-      const d = await api({ types: 'search', source: 'netease', name: songOnly, count: '3' });
-      if (Array.isArray(d) && d.length > 0) list = d;
+      const YT_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+      const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${YT_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId: vid,
+          context: { client: { clientName: 'ANDROID_VR', clientVersion: '1.61.48' } }
+        })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        const formats = d.streamingData?.adaptiveFormats || [];
+        const audios = formats.filter(f => f.mimeType && f.mimeType.startsWith('audio/'));
+        if (audios.length) {
+          audios.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+          const sel = audios.find(a => a.mimeType.includes('audio/mp4')) || audios[0];
+          info = {
+            audioUrl: sel.url,
+            bitrate: sel.bitrate || 128000,
+            duration: parseInt(d.videoDetails?.lengthSeconds || '0', 10),
+            lyrics: ''
+          };
+        }
+      }
     } catch (e) {}
   }
 
-  // 4. 尝试 JOOX
-  if (!list.length) {
-    try {
-      const d = await api({ types: 'search', source: 'joox', name: query, count: '3' });
-      if (Array.isArray(d) && d.length > 0) list = d;
-    } catch (e) {}
-  }
-
-  if (list.length > 0) {
-    const best = list[0];
-    track.lyric_id = String(best.lyric_id || best.id);
-    track._lyricSource = best.source || 'netease';
-    const r = await resolveUrl(best.source || 'netease', best.id);
-    if (r && r.url) {
-      track._resolvedAudioUrl = r.url;
-      track._resolvedBr = r.br || 320;
-      return r;
+  if (info && info.audioUrl) {
+    track._resolvedAudioUrl = info.audioUrl;
+    track._resolvedBr = Math.round((info.bitrate || 128000) / 1000);
+    if (info.lyrics) {
+      track._rawLrc = info.lyrics;
     }
+    return { url: info.audioUrl, br: track._resolvedBr };
   }
+
   return null;
 }
 
@@ -2653,7 +2621,7 @@ if ($('api-source-reset')) {
     urlCache.clear();
     lyricCache.clear();
     $('api-source-status').style.color = 'var(--accent)';
-    $('api-source-status').textContent = '已恢复默认高速 Meting 节点。';
+    $('api-source-status').textContent = '已恢复默认 GDStudio (多源智能容灾降级模式)。';
     toast('已恢复默认音源服务');
     renderCharts();
   };
