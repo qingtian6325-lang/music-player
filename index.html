@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>音乐播放器</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=20261020r">
+<link rel="stylesheet" href="css/style.css?v=20261021v7">
 </head>
 <body>
 
@@ -265,7 +265,24 @@
       <span class="btn-ic" id="pb-queue-ic"></span>
       <span id="pb-queue-badge" class="queue-badge-count" hidden>0</span>
     </button>
-    <span id="quality-badge" class="quality-badge" hidden></span>
+    <div class="quality-wrap">
+      <span id="quality-badge" class="quality-badge" title="点击切换音质" hidden>320K</span>
+      <div id="quality-menu" class="quality-popover" hidden>
+        <div class="quality-popover-title">🎧 音质切换 (实时生效)</div>
+        <div class="quality-opt" data-quality="999">
+          <div class="opt-name"><span class="q-tag q-hires">Hi-Res</span> 无损母带 / FLAC</div>
+          <div class="opt-desc">最高解析度无损母带 · 原汁原味录音室</div>
+        </div>
+        <div class="quality-opt" data-quality="320">
+          <div class="opt-name"><span class="q-tag q-high">320K</span> 极高品质</div>
+          <div class="opt-desc">320kbps 极高音质 MP3 · 兼顾品质与速度</div>
+        </div>
+        <div class="quality-opt" data-quality="128">
+          <div class="opt-name"><span class="q-tag q-std">128K</span> 标准品质</div>
+          <div class="opt-desc">128kbps 标准流畅 · 极速省流量</div>
+        </div>
+      </div>
+    </div>
     <button id="vol-btn" class="icon-btn sm" title="静音 / 恢复音量"><span class="vol-icon" id="vol-ic"></span></button>
     <input id="vol-slider" type="range" min="0" max="100" value="80" title="音量调节">
   </div>
@@ -437,6 +454,17 @@
     <div id="api-source-status" class="proxy-status"></div>
 
     <hr style="border-color:var(--line);margin:16px 0">
+    <h4 style="margin-bottom:6px">🎧 默认音频音质偏好 (Quality Preference)</h4>
+    <p class="modal-desc">默认以最高母带无损规格优先解析（支持 FLAC 24bit/192kHz 等顶级音质），若歌曲无对应高规格则自动平滑降档。</p>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <select id="pref-quality-select" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:13px; cursor:pointer;">
+        <option value="999">🌟 Hi-Res / FLAC 无损母带 (最高音质 · 推荐)</option>
+        <option value="320">💎 极高品质 320K (高保真 MP3)</option>
+        <option value="128">🎵 标准品质 128K (极速省流)</option>
+      </select>
+    </div>
+
+    <hr style="border-color:var(--line);margin:16px 0">
     <h4 style="margin-bottom:6px">🛡️ Cloudflare Worker 中转代理（办公室内网穿透）</h4>
     <p class="modal-desc">本站默认使用高速中转（disablecdnblock.qingtian6325.workers.dev），点开即听，公司局域网也能顺畅使用。你也可以填自己的 Worker 地址覆盖它；清空则恢复默认中转。</p>
     <input id="proxy-input" type="text" placeholder="https://你的worker.workers.dev" style="width:100%">
@@ -506,7 +534,7 @@
 <script>
   window.mkPlayer = { api: "api.php", version: "2026.09.25" };
 </script>
-<script src="js/crc32.min.js?v=20261021v6"></script>
-<script src="js/app.js?v=20261021v6"></script>
+<script src="js/crc32.min.js?v=20261021v7"></script>
+<script src="js/app.js?v=20261021v7"></script>
 </body>
 </html>

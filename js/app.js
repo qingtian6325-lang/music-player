@@ -283,17 +283,30 @@ function imgSrc(u) {
   const proxy = proxyBase();
   return proxy ? proxy + '/img?src=' + encodeURIComponent(url) : url;
 }
-const urlCache = new Map();   // source:id -> {url, br}
+const urlCache = new Map();   // source:id:pref -> {url, br, size}
 const lyricCache = new Map(); // source:id -> {lines:[{t, text, trans}]}
 
-async function resolveUrl(source, id) {
-  const key = source + ':' + id;
+function getPreferredQuality() {
+  return localStorage.getItem('mp_preferred_quality') || '999';
+}
+
+function getBrFallbackList(preferred) {
+  const p = parseInt(preferred, 10) || 999;
+  if (p >= 900) return [999, 740, 320, 192, 128];
+  if (p >= 300) return [320, 192, 128, 999];
+  return [128, 192, 320, 999];
+}
+
+async function resolveUrl(source, id, preferredBr = null) {
+  const pref = preferredBr || getPreferredQuality();
+  const key = `${source}:${id}:${pref}`;
   if (urlCache.has(key)) return urlCache.get(key);
-  for (const br of BR_FALLBACK) {
+  const brList = getBrFallbackList(pref);
+  for (const br of brList) {
     try {
       const d = await api({ types: 'url', source, id, br: String(br) });
       if (d && d.url) {
-        const r = { url: d.url, br: d.br || br };
+        const r = { url: d.url, br: d.br || br, size: d.size || 0 };
         urlCache.set(key, r);
         return r;
       }
@@ -744,8 +757,8 @@ async function playTrack(index) {
       nextTrack();
       return;
     }
-    $('quality-badge').hidden = false;
-    $('quality-badge').textContent = 'YouTube 320K';
+    track._lastRes = r;
+    updateQualityBadge(r, track);
   }
   // 2. 其他平台非 YouTube 歌曲
   else {
@@ -786,30 +799,30 @@ async function playTrack(index) {
       markPlayingRow();
     }
 
-    if (track._directUrl) {
+    // 优先调用 resolveUrl 获取最高品质（无损 Hi-Res / FLAC / 320K）
+    r = await resolveUrl(track.source, track.id);
+    if (!r && track.source !== 'netease') {
+      try {
+        const cleanName = cleanSongTitle(track.name);
+        const query = (cleanName + ' ' + (track.artist || []).join(' ')).trim();
+        const matched = await api({ types: 'search', source: 'netease', name: query, count: '3' });
+        if (Array.isArray(matched) && matched.length > 0) {
+          const best = matched[0];
+          track.id = String(best.id);
+          track.source = 'netease';
+          track.lyric_id = String(best.lyric_id || best.id);
+          if (!track.pic && best.pic) track.pic = best.pic;
+          r = (await resolveUrl('netease', best.id)) || (best._directUrl ? { url: best._directUrl, br: 320 } : null);
+        }
+      } catch (e) {}
+    }
+    if (!r && track._directUrl) {
       r = { url: track._directUrl, br: 320 };
-    } else {
-      r = await resolveUrl(track.source, track.id);
-      if (!r && track.source !== 'netease') {
-        try {
-          const cleanName = cleanSongTitle(track.name);
-          const query = (cleanName + ' ' + (track.artist || []).join(' ')).trim();
-          const matched = await api({ types: 'search', source: 'netease', name: query, count: '3' });
-          if (Array.isArray(matched) && matched.length > 0) {
-            const best = matched[0];
-            track.id = String(best.id);
-            track.source = 'netease';
-            track.lyric_id = String(best.lyric_id || best.id);
-            if (!track.pic && best.pic) track.pic = best.pic;
-            r = best._directUrl ? { url: best._directUrl, br: 320 } : await resolveUrl('netease', best.id);
-          }
-        } catch (e) {}
-      }
     }
 
     if (r) {
-      $('quality-badge').hidden = false;
-      $('quality-badge').textContent = qualityName(r.br);
+      track._lastRes = r;
+      updateQualityBadge(r, track);
     }
   }
 
@@ -824,6 +837,7 @@ async function playTrack(index) {
   audio.crossOrigin = 'anonymous';
   audio.src = audioSrc(r.url);
   track._cdnUrl = r.url;
+  track._lastRes = r;
   audioFallbackTried = false;
   try {
     await audio.play();
@@ -832,20 +846,130 @@ async function playTrack(index) {
     toast('浏览器拦截了自动播放，点一次播放键即可');
     return;
   }
-  $('quality-badge').hidden = false;
-  $('quality-badge').textContent = track.source === 'youtube' ? 'YouTube 320K' : qualityName(r.br);
+  updateQualityBadge(r, track);
 
   lyricLines = await loadLyric(track);
   if (currentTrack() === track) renderLyric(lyricLines);
 }
 
-function qualityName(br) {
-  br = +br;
-  if (br >= 900) return '无损 24bit';
-  if (br >= 700) return '无损 16bit';
-  if (br >= 300) return '320K';
-  if (br >= 180) return '192K';
-  return '128K';
+/* 实时音质信息解析：精准识别 Hi-Res 母带 (24bit)、FLAC 无损、320K 极高与 YouTube 原声 */
+function formatQualityInfo(r, track) {
+  if (!r) return { text: '320K', cls: 'quality-high', title: '极高音质 (320kbps)' };
+
+  if (track && track.source === 'youtube') {
+    const kbps = r.br ? Math.round(r.br > 1000 ? r.br / 1000 : r.br) : 160;
+    return {
+      text: `YouTube · ${kbps}K`,
+      cls: 'quality-yt',
+      title: `YouTube 官方原声音频流 (${kbps}kbps ${r.mimeType || 'Opus'})`
+    };
+  }
+
+  const url = String(r.url || '').toLowerCase();
+  const isFlac = url.includes('.flac') || (r.mimeType && r.mimeType.includes('flac'));
+  let br = Number(r.br) || 0;
+
+  // 如果有文件大小和音频时长，但 br 为 0 或 999，计算真实瞬时码率
+  if ((!br || br === 999) && r.size && audio.duration && isFinite(audio.duration) && audio.duration > 0) {
+    br = Math.round((r.size * 8) / audio.duration / 1000);
+  }
+
+  if (isFlac || br >= 700) {
+    const displayBr = br > 0 && br !== 999 ? `${br}K` : '无损';
+    if (br >= 900 || br === 999) {
+      return {
+        text: `Hi-Res · ${displayBr}`,
+        cls: 'quality-hires',
+        title: `Hi-Res 高解析度无损母带 (${br > 0 && br !== 999 ? br + 'kbps FLAC' : 'FLAC'}) · 点击切换音质`
+      };
+    }
+    return {
+      text: `FLAC · ${displayBr}`,
+      cls: 'quality-lossless',
+      title: `SQ 无损音质 (${br > 0 ? br + 'kbps FLAC' : 'FLAC 16bit'}) · 点击切换音质`
+    };
+  }
+
+  if (br >= 300) {
+    return {
+      text: '320K · 极高',
+      cls: 'quality-high',
+      title: '极高音质 (320kbps MP3) · 点击切换音质'
+    };
+  }
+
+  if (br >= 180) {
+    return {
+      text: '192K · 高品',
+      cls: 'quality-medium',
+      title: '高品质 (192kbps MP3) · 点击切换音质'
+    };
+  }
+
+  return {
+    text: '128K · 标准',
+    cls: 'quality-standard',
+    title: '标准音质 (128kbps MP3) · 点击切换音质'
+  };
+}
+
+function updateQualityBadge(r, track) {
+  const badge = $('quality-badge');
+  if (!badge) return;
+  const info = formatQualityInfo(r, track);
+  badge.textContent = info.text;
+  badge.title = info.title;
+  badge.className = `quality-badge ${info.cls}`;
+  badge.hidden = false;
+  syncQualityMenuState();
+}
+
+function syncQualityMenuState() {
+  const pref = getPreferredQuality();
+  document.querySelectorAll('.quality-opt').forEach(opt => {
+    opt.classList.toggle('active', opt.dataset.quality === String(pref));
+  });
+  const sel = $('pref-quality-select');
+  if (sel) sel.value = String(pref);
+}
+
+/* 动态音质即时切换引擎：保持当前播放进度秒级无缝热切换 */
+async function switchQuality(targetBr) {
+  localStorage.setItem('mp_preferred_quality', String(targetBr));
+  urlCache.clear();
+  syncQualityMenuState();
+  const track = currentTrack();
+  if (!track) {
+    toast(`已保存默认音质偏好：${targetBr === 999 ? 'Hi-Res 无损母带' : targetBr + 'K'}`);
+    return;
+  }
+  if (track.source === 'youtube') {
+    toast('YouTube 官方音源已自动输出最高可用码率');
+    return;
+  }
+
+  toast(`正在切换至 ${targetBr === 999 ? 'Hi-Res / FLAC 无损' : targetBr + 'K'} 音质…`);
+  const curTime = audio.currentTime;
+  const wasPaused = audio.paused;
+  try {
+    const r = await resolveUrl(track.source, track.id, targetBr);
+    if (r && r.url) {
+      track._cdnUrl = r.url;
+      track._lastRes = r;
+      audio.src = audioSrc(r.url);
+      audio.currentTime = curTime;
+      if (!wasPaused) {
+        audio.play().catch(() => {});
+      }
+      updateQualityBadge(r, track);
+      const info = formatQualityInfo(r, track);
+      toast(`✨ 音质已切换为：${info.text}`);
+    } else {
+      toast('当前歌曲无此档位音质，已保持原样播放');
+    }
+  } catch (e) {
+    toast('音质切换失败，请稍后再试');
+  }
 }
 
 function updatePlayerMeta(track, loading) {
@@ -2609,12 +2733,52 @@ function openSettings() {
   }
   if ($('api-source-status')) $('api-source-status').textContent = '';
 
+  const prefQual = getPreferredQuality();
+  if ($('pref-quality-select')) $('pref-quality-select').value = String(prefQual);
+
   $('proxy-input').value = localStorage.getItem('mp_proxy') || '';
   $('proxy-status').textContent = '';
   $('lyric-delay').value = String(lyricDelayMs);
   $('lyric-delay-val').textContent = lyricDelayMs + 'ms';
   $('settings-modal').hidden = false;
 }
+
+if ($('pref-quality-select')) {
+  $('pref-quality-select').onchange = (e) => {
+    switchQuality(parseInt(e.target.value, 10));
+  };
+}
+
+// 实时音质切换胶囊与下拉气泡菜单绑定
+if ($('quality-badge')) {
+  $('quality-badge').onclick = (e) => {
+    e.stopPropagation();
+    const menu = $('quality-menu');
+    if (menu) {
+      menu.hidden = !menu.hidden;
+      syncQualityMenuState();
+    }
+  };
+}
+document.querySelectorAll('.quality-opt').forEach(opt => {
+  opt.onclick = (e) => {
+    e.stopPropagation();
+    const q = parseInt(opt.dataset.quality, 10) || 999;
+    if ($('quality-menu')) $('quality-menu').hidden = true;
+    switchQuality(q);
+  };
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.quality-wrap')) {
+    if ($('quality-menu')) $('quality-menu').hidden = true;
+  }
+});
+audio.addEventListener('loadedmetadata', () => {
+  const t = currentTrack();
+  if (t && t._lastRes) {
+    updateQualityBadge(t._lastRes, t);
+  }
+});
 
 if ($('api-source-preset')) {
   $('api-source-preset').onchange = () => {
