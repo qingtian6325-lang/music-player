@@ -27,8 +27,8 @@
     <div class="side-card">
       <div class="logo" id="logo-home"><span class="logo-icon" id="logo-icon"></span>音乐播放器</div>
       
-      <!-- 搜索栏及搜索历史/热门推荐 -->
-      <div class="search-box">
+      <!-- 搜索栏及搜索历史/热门推荐 (收起式弹层) -->
+      <div class="search-box" id="search-box">
         <div class="search-input-wrap">
           <input id="search-input" type="text" placeholder="搜索歌曲 / 歌手 / 粘贴YouTube链接…" autocomplete="off">
           <button id="search-clear-btn" class="search-clear-btn" title="清空输入" hidden>&times;</button>
@@ -43,8 +43,8 @@
           </select>
           <button id="search-btn">搜索</button>
         </div>
-        <!-- 搜索历史与热搜标签 -->
-        <div id="search-tags-box" class="search-tags-box">
+        <!-- 搜索历史与热搜下拉面板 (点击搜索框展开，失焦/搜索后自动收起) -->
+        <div id="search-tags-box" class="search-tags-popover" hidden>
           <div class="search-tags-section" id="search-history-section" hidden>
             <div class="tags-header">
               <span>搜索历史</span>
@@ -121,15 +121,18 @@
   </div>
 </div>
 
-<!-- 歌词面板（侧边抽屉 / 全屏） -->
+<!-- 歌词面板（侧边抽屉黑胶联动 / 大屏全屏居中） -->
 <div id="lyrics-panel" class="lyrics-panel" hidden>
   <div id="lyrics-ambient" class="lyrics-ambient"></div>
   <canvas id="lyrics-visualizer" class="panel-visualizer"></canvas>
   <div class="lyrics-head">
-    <img id="lyrics-cover" class="lyrics-cover" alt="">
-    <div class="lyrics-meta">
-      <div id="lyrics-title" class="lyrics-title">—</div>
-      <div id="lyrics-artist" class="lyrics-artist">—</div>
+    <div class="lyrics-head-left">
+      <button id="lyrics-close" class="ghost-btn icon-only" title="关闭"><span class="btn-ic" id="lyrics-close-ic"></span></button>
+      <img id="lyrics-head-cover" class="lyrics-head-cover" alt="">
+      <div class="lyrics-meta">
+        <div id="lyrics-title" class="lyrics-title">—</div>
+        <div id="lyrics-artist" class="lyrics-artist">—</div>
+      </div>
     </div>
     <div class="lyrics-controls">
       <button id="lyrics-prev" class="icon-btn" title="上一首"><span class="btn-ic" id="lyrics-prev-ic"></span></button>
@@ -143,9 +146,28 @@
       <button id="lyrics-copy" class="ghost-btn icon-only" title="复制歌词"><span class="btn-ic" id="lyrics-copy-ic"></span></button>
       <button id="lyrics-pip" class="ghost-btn icon-only" title="画中画悬浮歌词"><span class="btn-ic" id="lyrics-pip-ic"></span></button>
       <button id="lyrics-full" class="ghost-btn icon-only" title="全屏切换"><span class="btn-ic" id="lyrics-full-ic"></span></button>
-      <button id="lyrics-close" class="ghost-btn icon-only" title="关闭"><span class="btn-ic" id="lyrics-close-ic"></span></button>
     </div>
   </div>
+
+  <!-- 黑胶唱片 + 唱片套展示区（小屏侧栏模式，参考精致黑胶露出设计） -->
+  <div class="lyrics-showcase" id="lyrics-showcase">
+    <div class="lyrics-vinyl-wrap">
+      <div class="vinyl-disc" id="lyrics-vinyl-disc">
+        <div class="vinyl-grooves"></div>
+        <div class="vinyl-center">
+          <img id="vinyl-center-img" class="vinyl-center-img" alt="">
+        </div>
+      </div>
+      <div class="vinyl-sleeve">
+        <img id="lyrics-cover" class="lyrics-cover" alt="">
+      </div>
+    </div>
+    <div class="lyrics-side-meta">
+      <div id="lyrics-side-title" class="lyrics-side-title">—</div>
+      <div id="lyrics-side-artist" class="lyrics-side-artist">—</div>
+    </div>
+  </div>
+
   <div id="lyrics-body" class="lyrics-body">
     <div class="lyrics-empty">暂无歌词</div>
   </div>
@@ -458,6 +480,6 @@
 <video id="wake-video" playsinline loop muted style="display:none"></video>
 
 <audio id="audio" preload="auto" crossorigin="anonymous"></audio>
-<script src="js/app.js?v=20261021"></script>
+<script src="js/app.js?v=20261021v2"></script>
 </body>
 </html>

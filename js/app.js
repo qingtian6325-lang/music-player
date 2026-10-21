@@ -651,10 +651,22 @@ function updatePlayerMeta(track, loading) {
   $('pb-artist').textContent = track.artist.join(' / ') + (loading ? '（加载中…）' : '');
   $('lyrics-title').textContent = track.name;
   $('lyrics-artist').textContent = track.artist.join(' / ');
+  const lst = $('lyrics-side-title'); if (lst) lst.textContent = track.name;
+  const lsa = $('lyrics-side-artist'); if (lsa) lsa.textContent = track.artist.join(' / ');
   const lc = $('lyrics-cover');
   if (lc) {
     if (pic) { lc.src = pic; lc.style.display = 'block'; }
     else { lc.removeAttribute('src'); lc.style.display = 'none'; }
+  }
+  const lhc = $('lyrics-head-cover');
+  if (lhc) {
+    if (pic) { lhc.src = pic; }
+    else { lhc.removeAttribute('src'); }
+  }
+  const vc = $('vinyl-center-img');
+  if (vc) {
+    if (pic) { vc.src = pic; }
+    else { vc.removeAttribute('src'); }
   }
   updateFavBtn();
   document.title = `${track.name} - ${track.artist.join('/')} | 音乐播放器`;
@@ -1356,6 +1368,7 @@ function renderSearchTags() {
         if (e.target.closest('.tag-del')) return;
         $('search-input').value = h;
         $('search-clear-btn').hidden = false;
+        $('search-tags-box').hidden = true;
         doSearch();
       };
       pill.querySelector('.tag-del').onclick = (e) => {
@@ -1379,6 +1392,7 @@ function renderSearchTags() {
     pill.onclick = () => {
       $('search-input').value = k;
       $('search-clear-btn').hidden = false;
+      $('search-tags-box').hidden = true;
       doSearch();
     };
     hotBox.appendChild(pill);
@@ -1387,6 +1401,7 @@ function renderSearchTags() {
 
 /* 核心搜索实现：支持全网聚合、网易云、YouTube 跨域检索与单曲直链解析 */
 async function doSearch(isLoadMore = false) {
+  $('search-tags-box').hidden = true;
   if (!isLoadMore) {
     searchKeyword = $('search-input').value.trim();
     if (!searchKeyword) { toast('请先输入关键词或粘贴链接'); return; }
@@ -1966,6 +1981,14 @@ $('progress-wrap').onclick = (e) => {
 $('search-btn').onclick = () => doSearch(false);
 $('search-input').addEventListener('input', (e) => {
   $('search-clear-btn').hidden = !e.target.value;
+  $('search-tags-box').hidden = false;
+});
+$('search-input').addEventListener('focus', () => {
+  $('search-tags-box').hidden = false;
+});
+$('search-input').addEventListener('click', (e) => {
+  e.stopPropagation();
+  $('search-tags-box').hidden = false;
 });
 $('search-clear-btn').onclick = () => {
   $('search-input').value = '';
@@ -1974,6 +1997,13 @@ $('search-clear-btn').onclick = () => {
 };
 $('search-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') doSearch(false);
+  else if (e.key === 'Escape') $('search-tags-box').hidden = true;
+});
+document.addEventListener('click', (e) => {
+  const box = $('search-box');
+  if (box && !box.contains(e.target)) {
+    $('search-tags-box').hidden = true;
+  }
 });
 $('clear-history-btn').onclick = () => {
   searchHistory = [];
@@ -2163,6 +2193,8 @@ function setLyricsOpen(open) {
   $('lyrics-panel').hidden = !open;
   $('lyrics-btn').classList.toggle('active', open);
   if (open) {
+    if (audio.paused) $('lyrics-panel').classList.add('paused');
+    else $('lyrics-panel').classList.remove('paused');
     syncLyric();
     setTimeout(centerCurrentLyric, 80);
   } else {
@@ -2261,6 +2293,7 @@ audio.addEventListener('play', () => {
   setPlayIcon(true);
   $('player-bar').classList.remove('paused');
   $('now-playing').classList.remove('paused');
+  if ($('lyrics-panel')) $('lyrics-panel').classList.remove('paused');
   const a = $('ambient');
   if (a) a.classList.remove('paused');
   updateScreenWakeState();
@@ -2269,6 +2302,7 @@ audio.addEventListener('pause', () => {
   setBuffering(false);
   $('player-bar').classList.add('paused');
   $('now-playing').classList.add('paused');
+  if ($('lyrics-panel')) $('lyrics-panel').classList.add('paused');
   const a = $('ambient');
   if (a) a.classList.add('paused');
   updateScreenWakeState();
@@ -2329,6 +2363,7 @@ document.addEventListener('keydown', (e) => {
     closeNowPlaying();
     closeQueue();
     closeTrackMenu();
+    $('search-tags-box').hidden = true;
     $('settings-modal').hidden = true;
     $('import-modal').hidden = true;
     $('sleep-modal').hidden = true;
