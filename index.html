@@ -117,7 +117,7 @@
         </div>
       </section>
     </main>
-    <div id="api-credit">音乐数据接口：GD音乐台 (music.gdstudio.xyz) · CC BY-NC 4.0 · 本站仅供学习交流，请勿商用</div>
+    <div id="api-credit">音乐数据接口：开放音乐服务 (Meting API) · 支持设置中随时切换节点 · 本站仅供学习交流，请勿商用</div>
   </div>
 </div>
 
@@ -415,6 +415,28 @@
       <h3>⚙️ 播放器设置</h3>
       <button id="proxy-close" class="ghost-btn icon-only">&times;</button>
     </div>
+
+    <!-- 音乐 API 数据源服务选择 -->
+    <h4 style="margin-bottom:6px">🌐 音乐 API 音源服务选择</h4>
+    <p class="modal-desc">GDStudio 已彻底失效。您可以在下方选择优质公用节点，或自由填入自建 API / Worker 节点，支持一键测速与无缝切换。</p>
+    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:8px;">
+      <select id="api-source-preset" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:13px; cursor:pointer;">
+        <option value="https://met.liiiu.cn/meting/api">🚀 Meting 全网高速节点 (推荐 · 快速稳定)</option>
+        <option value="https://api.injahow.cn/meting/">⚡ Injahow 节点 (备用 · 歌单/音频流)</option>
+        <option value="https://api.qijieya.cn/meting/">🛡️ Qijieya 节点 (备用 · VIP/黑胶解析)</option>
+        <option value="custom">✏️ 自定义 API 地址 (Custom Endpoint)</option>
+      </select>
+      <input id="api-source-input" type="text" placeholder="https://met.liiiu.cn/meting/api" style="width:100%">
+    </div>
+    <div class="modal-row">
+      <button id="api-source-test" class="ghost-btn">测试延迟</button>
+      <button id="api-source-save" class="primary-btn">保存生效</button>
+      <button id="api-source-reset" class="ghost-btn">恢复默认</button>
+    </div>
+    <div id="api-source-status" class="proxy-status"></div>
+
+    <hr style="border-color:var(--line);margin:16px 0">
+    <h4 style="margin-bottom:6px">🛡️ Cloudflare Worker 中转代理（办公室内网穿透）</h4>
     <p class="modal-desc">本站默认使用高速中转（disablecdnblock.qingtian6325.workers.dev），点开即听，公司局域网也能顺畅使用。你也可以填自己的 Worker 地址覆盖它；清空则恢复默认中转。</p>
     <input id="proxy-input" type="text" placeholder="https://你的worker.workers.dev" style="width:100%">
     <div class="modal-row">
@@ -480,6 +502,6 @@
 <video id="wake-video" playsinline loop muted style="display:none"></video>
 
 <audio id="audio" preload="auto" crossorigin="anonymous"></audio>
-<script src="js/app.js?v=20261021v2"></script>
+<script src="js/app.js?v=20261021v3"></script>
 </body>
 </html>

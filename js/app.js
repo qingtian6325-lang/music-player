@@ -1,7 +1,16 @@
-/* 音乐播放器 - 数据接口: GD音乐台 music.gdstudio.xyz (CC BY-NC 4.0, 仅供学习)
- * 功能增强版: 播放队列、音频均衡器、桌面画中画歌词、睡眠定时、自建歌单、YouTube 音乐支持、全网聚合搜索、数据备份
- */
-const API = 'https://music-api.gdstudio.xyz/api.php';
+/* 音乐播放器 - 多源聚合版 (支持随时自由切换 Meting / 自建 API 服务) */
+const DEFAULT_API_SOURCE = 'https://met.liiiu.cn/meting/api';
+const API_PRESETS = [
+  { id: 'liiiu', name: 'Meting 全网高速节点 (推荐 · 快速稳定)', url: 'https://met.liiiu.cn/meting/api' },
+  { id: 'injahow', name: 'Injahow 节点 (备用 · 歌单/音频流)', url: 'https://api.injahow.cn/meting/' },
+  { id: 'qijieya', name: 'Qijieya 节点 (备用 · VIP/黑胶解析)', url: 'https://api.qijieya.cn/meting/' }
+];
+function currentApiSource() {
+  return (localStorage.getItem('mp_api_source') || DEFAULT_API_SOURCE).trim().replace(/\/$/, '');
+}
+function isMetingUrl(u) {
+  return /meting/i.test(u) || !/api\.php/i.test(u);
+}
 const BR_FALLBACK = [999, 740, 320, 128];
 
 const CHARTS = [
@@ -65,13 +74,168 @@ async function fetchJson(url) {
   return res.json();
 }
 async function api(params) {
+  const apiSource = currentApiSource();
+  const isMeting = isMetingUrl(apiSource);
+
+  // 1. Meting 规范节点 (支持全网搜索、网易云、QQ音乐、歌单、音频流)
+  if (isMeting) {
+    const { types, source = 'netease', name = '', id = '', count = '20', pages = '1' } = params;
+    const server = (source === 'tencent' || source === 'qq') ? 'tencent' : 'netease';
+
+    if (types === 'search') {
+      try {
+        const u = `${apiSource}?server=${server}&type=search&id=${encodeURIComponent(name)}`;
+        const list = await fetchJson(u);
+        if (!Array.isArray(list)) return [];
+        return list.map((item, idx) => {
+          const urlMatch = (item.url || '').match(/id=([^&]+)/);
+          const lrcMatch = (item.lrc || '').match(/id=([^&]+)/);
+          const trackId = String(item.id || (urlMatch ? urlMatch[1] : `tid_${idx}`));
+          return {
+            id: trackId,
+            name: item.title || item.name || '未知曲目',
+            artist: Array.isArray(item.author) ? item.author : Array.isArray(item.artist) ? item.artist : String(item.author || item.artist || '未知歌手').split('/'),
+            album: item.album || '',
+            pic: item.pic || '',
+            pic_id: '',
+            lyric_id: lrcMatch ? lrcMatch[1] : trackId,
+            source: server,
+            duration: item.duration || 0,
+            _directUrl: item.url || ''
+          };
+        });
+      } catch (err) {
+        for (const preset of API_PRESETS) {
+          if (preset.url !== apiSource) {
+            try {
+              const u = `${preset.url}?server=${server}&type=search&id=${encodeURIComponent(name)}`;
+              const list = await fetchJson(u);
+              if (Array.isArray(list) && list.length > 0) {
+                return list.map((item, idx) => {
+                  const urlMatch = (item.url || '').match(/id=([^&]+)/);
+                  const lrcMatch = (item.lrc || '').match(/id=([^&]+)/);
+                  const trackId = String(item.id || (urlMatch ? urlMatch[1] : `tid_${idx}`));
+                  return {
+                    id: trackId,
+                    name: item.title || item.name || '未知曲目',
+                    artist: Array.isArray(item.author) ? item.author : Array.isArray(item.artist) ? item.artist : String(item.author || item.artist || '未知歌手').split('/'),
+                    album: item.album || '',
+                    pic: item.pic || '',
+                    pic_id: '',
+                    lyric_id: lrcMatch ? lrcMatch[1] : trackId,
+                    source: server,
+                    duration: item.duration || 0,
+                    _directUrl: item.url || ''
+                  };
+                });
+              }
+            } catch (e) {}
+          }
+        }
+        return [];
+      }
+    }
+
+    if (types === 'url') {
+      const u = `${apiSource}?server=${server}&type=url&id=${id}`;
+      return { url: u, br: 320 };
+    }
+
+    if (types === 'lyric') {
+      try {
+        const u = `${apiSource}?server=${server}&type=lrc&id=${id}`;
+        const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const text = await res.text();
+        return { lyric: text, tlyric: '' };
+      } catch (err) {
+        for (const preset of API_PRESETS) {
+          if (preset.url !== apiSource) {
+            try {
+              const u = `${preset.url}?server=${server}&type=lrc&id=${id}`;
+              const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+              const text = await res.text();
+              if (text && text.includes('[')) return { lyric: text, tlyric: '' };
+            } catch (e) {}
+          }
+        }
+        return { lyric: '', tlyric: '' };
+      }
+    }
+
+    if (types === 'playlist') {
+      try {
+        const u = `${apiSource}?server=${server}&type=playlist&id=${id}`;
+        const d = await fetchJson(u);
+        if (!Array.isArray(d)) return { playlist: { tracks: [] } };
+        return {
+          playlist: {
+            name: '官方精选榜单',
+            tracks: d.map((item, idx) => {
+              const urlMatch = (item.url || '').match(/id=([^&]+)/);
+              const lrcMatch = (item.lrc || '').match(/id=([^&]+)/);
+              const trackId = String(item.id || (urlMatch ? urlMatch[1] : `pl_${id}_${idx}`));
+              return {
+                id: trackId,
+                name: item.title || item.name || '未知曲目',
+                artist: Array.isArray(item.author) ? item.author : Array.isArray(item.artist) ? item.artist : String(item.author || item.artist || '未知歌手').split('/'),
+                album: item.album || '',
+                pic: item.pic || '',
+                pic_id: '',
+                lyric_id: lrcMatch ? lrcMatch[1] : trackId,
+                source: server,
+                duration: item.duration || 0,
+                _directUrl: item.url || ''
+              };
+            })
+          }
+        };
+      } catch (err) {
+        for (const preset of API_PRESETS) {
+          if (preset.url !== apiSource) {
+            try {
+              const u = `${preset.url}?server=${server}&type=playlist&id=${id}`;
+              const d = await fetchJson(u);
+              if (Array.isArray(d) && d.length > 0) {
+                return {
+                  playlist: {
+                    name: '官方精选榜单',
+                    tracks: d.map((item, idx) => {
+                      const urlMatch = (item.url || '').match(/id=([^&]+)/);
+                      const lrcMatch = (item.lrc || '').match(/id=([^&]+)/);
+                      const trackId = String(item.id || (urlMatch ? urlMatch[1] : `pl_${id}_${idx}`));
+                      return {
+                        id: trackId,
+                        name: item.title || item.name || '未知曲目',
+                        artist: Array.isArray(item.author) ? item.author : Array.isArray(item.artist) ? item.artist : String(item.author || item.artist || '未知歌手').split('/'),
+                        album: item.album || '',
+                        pic: item.pic || '',
+                        pic_id: '',
+                        lyric_id: lrcMatch ? lrcMatch[1] : trackId,
+                        source: server,
+                        duration: item.duration || 0,
+                        _directUrl: item.url || ''
+                      };
+                    })
+                  }
+                };
+              }
+            } catch (e) {}
+          }
+        }
+        return { playlist: { tracks: [] } };
+      }
+    }
+  }
+
+  // 2. 自定义兼容或 MKOnlinePlayer api.php 节点
   const q = new URLSearchParams(params).toString();
   const proxy = proxyBase();
   if (proxy) {
-    try { return await fetchJson(proxy + '/api?' + q); }
-    catch (e) { /* 中转失败则降级直连 */ }
+    try {
+      return await fetchJson(proxy + '/api?upstream=' + encodeURIComponent(apiSource) + '&' + q);
+    } catch (e) {}
   }
-  return fetchJson(API + '?' + q);
+  return fetchJson(apiSource + (apiSource.includes('?') ? '&' : '?') + q);
 }
 /* 音频地址：设置了中转则走 Worker 流式转发，否则直链 */
 function audioSrc(cdnUrl) {
@@ -578,20 +742,25 @@ async function playTrack(index) {
       markPlayingRow();
     }
 
-    r = await resolveUrl(track.source, track.id);
-    if (!r && track.source !== 'netease') {
-      try {
-        const cleanName = cleanSongTitle(track.name);
-        const query = (cleanName + ' ' + (track.artist || []).join(' ')).trim();
-        const matched = await api({ types: 'search', source: 'netease', name: query, count: '3' });
-        if (Array.isArray(matched) && matched.length > 0) {
-          const best = matched[0];
-          track.id = String(best.id);
-          track.source = 'netease';
-          track.lyric_id = String(best.lyric_id || best.id);
-          r = await resolveUrl('netease', best.id);
-        }
-      } catch (e) {}
+    if (track._directUrl) {
+      r = { url: track._directUrl, br: 320 };
+    } else {
+      r = await resolveUrl(track.source, track.id);
+      if (!r && track.source !== 'netease') {
+        try {
+          const cleanName = cleanSongTitle(track.name);
+          const query = (cleanName + ' ' + (track.artist || []).join(' ')).trim();
+          const matched = await api({ types: 'search', source: 'netease', name: query, count: '3' });
+          if (Array.isArray(matched) && matched.length > 0) {
+            const best = matched[0];
+            track.id = String(best.id);
+            track.source = 'netease';
+            track.lyric_id = String(best.lyric_id || best.id);
+            if (!track.pic && best.pic) track.pic = best.pic;
+            r = best._directUrl ? { url: best._directUrl, br: 320 } : await resolveUrl('netease', best.id);
+          }
+        } catch (e) {}
+      }
     }
 
     if (r) {
@@ -1315,16 +1484,25 @@ async function openChart(c) {
   $('list-empty').hidden = true;
   try {
     const d = await api({ types: 'playlist', id: c.id });
-    const tracks = (d.playlist.tracks || []).map((t) => ({
-      id: String(t.id),
-      name: t.name,
-      artist: (t.ar || []).map((a) => a.name),
-      album: (t.al || {}).name || '',
-      pic: (t.al || {}).picUrl || '',
-      lyric_id: String(t.id),
-      source: 'netease',
-      duration: t.dt ? Math.round(t.dt / 1000) : 0,
-    }));
+    const tracks = (d.playlist.tracks || []).map((t) => {
+      let artists = [];
+      if (Array.isArray(t.artist)) artists = t.artist;
+      else if (t.ar && Array.isArray(t.ar)) artists = t.ar.map((a) => a.name);
+      else if (typeof t.artist === 'string') artists = [t.artist];
+      else if (t.author) artists = Array.isArray(t.author) ? t.author : [t.author];
+
+      return {
+        id: String(t.id),
+        name: t.name || t.title || '未知曲目',
+        artist: artists.length ? artists : ['未知歌手'],
+        album: (t.al && t.al.name) || t.album || '',
+        pic: (t.al && t.al.picUrl) || t.pic || '',
+        lyric_id: String(t.lyric_id || t.id),
+        source: t.source || 'netease',
+        duration: t.duration || (t.dt ? Math.round(t.dt / 1000) : 0),
+        _directUrl: t._directUrl || ''
+      };
+    });
     showListLoading(false);
     renderTrackList(tracks, c.name, `官方榜单 · ${tracks.length}首`);
   } catch (e) {
@@ -1514,11 +1692,12 @@ async function doSearch(isLoadMore = false) {
               name: s.name,
               artist: s.artist || [],
               album: s.album ? `${s.album} · 网易云` : '网易云',
-              pic: '',
+              pic: s.pic || '',
               pic_id: s.pic_id || '',
               lyric_id: s.lyric_id ? String(s.lyric_id) : String(s.id),
               source: 'netease',
-              duration: 0,
+              duration: s.duration || 0,
+              _directUrl: s._directUrl || ''
             });
           }
         });
@@ -1534,11 +1713,12 @@ async function doSearch(isLoadMore = false) {
               name: s.name,
               artist: s.artist || [],
               album: s.album ? `${s.album} · JOOX` : 'JOOX 海外',
-              pic: '',
+              pic: s.pic || '',
               pic_id: s.pic_id || '',
               lyric_id: s.lyric_id ? String(s.lyric_id) : String(s.id),
               source: 'joox',
-              duration: 0,
+              duration: s.duration || 0,
+              _directUrl: s._directUrl || ''
             });
           }
         });
@@ -1565,11 +1745,12 @@ async function doSearch(isLoadMore = false) {
         name: s.name,
         artist: s.artist || [],
         album: s.album || '',
-        pic: '',
+        pic: s.pic || '',
         pic_id: s.pic_id || '',
         lyric_id: s.lyric_id ? String(s.lyric_id) : String(s.id),
         source: s.source || searchSource,
-        duration: 0,
+        duration: s.duration || 0,
+        _directUrl: s._directUrl || ''
       }));
     }
 
@@ -2374,11 +2555,108 @@ document.addEventListener('keydown', (e) => {
 
 /* ---------- 设置弹窗 ---------- */
 function openSettings() {
+  const curApi = currentApiSource();
+  const apiInput = $('api-source-input');
+  const apiPreset = $('api-source-preset');
+  if (apiInput) apiInput.value = curApi;
+  if (apiPreset) {
+    const found = Array.from(apiPreset.options).some(o => o.value === curApi);
+    apiPreset.value = found ? curApi : 'custom';
+  }
+  if ($('api-source-status')) $('api-source-status').textContent = '';
+
   $('proxy-input').value = localStorage.getItem('mp_proxy') || '';
   $('proxy-status').textContent = '';
   $('lyric-delay').value = String(lyricDelayMs);
   $('lyric-delay-val').textContent = lyricDelayMs + 'ms';
   $('settings-modal').hidden = false;
+}
+
+if ($('api-source-preset')) {
+  $('api-source-preset').onchange = () => {
+    const val = $('api-source-preset').value;
+    if (val !== 'custom') {
+      $('api-source-input').value = val;
+    }
+  };
+}
+
+if ($('api-source-input')) {
+  $('api-source-input').oninput = () => {
+    const val = $('api-source-input').value.trim();
+    const presetEl = $('api-source-preset');
+    if (presetEl) {
+      const found = Array.from(presetEl.options).some(o => o.value === val);
+      presetEl.value = found ? val : 'custom';
+    }
+  };
+}
+
+if ($('api-source-test')) {
+  $('api-source-test').onclick = async () => {
+    const val = ($('api-source-input').value || '').trim().replace(/\/$/, '');
+    if (!val) { toast('请先输入或选择 API 节点地址'); return; }
+    $('api-source-status').style.color = 'var(--text-sub)';
+    $('api-source-status').textContent = '正在测速中…';
+    const start = performance.now();
+    try {
+      let testUrl = '';
+      if (isMetingUrl(val)) {
+        testUrl = `${val}?server=netease&type=search&id=${encodeURIComponent('晴天')}`;
+      } else {
+        testUrl = `${val}${val.includes('?') ? '&' : '?'}types=search&source=netease&name=${encodeURIComponent('晴天')}&count=1`;
+      }
+      const r = await fetch(testUrl, { signal: AbortSignal.timeout(6000) });
+      const d = await r.json();
+      const elapsed = Math.round(performance.now() - start);
+      if (Array.isArray(d) || (d && d.length) || (d && d.playlist)) {
+        $('api-source-status').style.color = 'var(--accent)';
+        $('api-source-status').textContent = `✅ 连接正常！响应时间：${elapsed}ms · 返回有效歌曲数据`;
+      } else {
+        $('api-source-status').style.color = '#f59e0b';
+        $('api-source-status').textContent = `⚠️ 节点可达 (${elapsed}ms) 但返回数据格式需适配`;
+      }
+    } catch (e) {
+      $('api-source-status').style.color = '#ef4444';
+      $('api-source-status').textContent = `❌ 测速失败：${e.message || '网络连接超时或跨域阻断'}`;
+    }
+  };
+}
+
+if ($('api-source-save')) {
+  $('api-source-save').onclick = () => {
+    const val = ($('api-source-input').value || '').trim().replace(/\/$/, '');
+    if (!val) {
+      localStorage.removeItem('mp_api_source');
+      toast('已恢复默认 API 节点');
+    } else {
+      if (!/^https?:\/\//i.test(val)) {
+        toast('API 地址需以 http:// 或 https:// 开头');
+        return;
+      }
+      localStorage.setItem('mp_api_source', val);
+      toast('API 音源已保存并生效');
+    }
+    urlCache.clear();
+    lyricCache.clear();
+    $('api-source-status').style.color = 'var(--accent)';
+    $('api-source-status').textContent = '✅ 当前 API 源已生效，已清理历史缓存。';
+    renderCharts();
+  };
+}
+
+if ($('api-source-reset')) {
+  $('api-source-reset').onclick = () => {
+    localStorage.removeItem('mp_api_source');
+    $('api-source-input').value = DEFAULT_API_SOURCE;
+    if ($('api-source-preset')) $('api-source-preset').value = DEFAULT_API_SOURCE;
+    urlCache.clear();
+    lyricCache.clear();
+    $('api-source-status').style.color = 'var(--accent)';
+    $('api-source-status').textContent = '已恢复默认高速 Meting 节点。';
+    toast('已恢复默认音源服务');
+    renderCharts();
+  };
 }
 $('lyric-delay').oninput = () => {
   lyricDelayMs = parseInt($('lyric-delay').value, 10) || 0;

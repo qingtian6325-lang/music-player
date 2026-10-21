@@ -4,7 +4,7 @@
  * 部署：Cloudflare Dashboard -> Workers -> Create -> 粘贴本文件 -> Deploy
  * 费用：免费版每日 10 万次请求，个人用足够。
  */
-const UPSTREAM_API = 'https://music-api.gdstudio.xyz';
+const UPSTREAM_API = 'https://met.liiiu.cn/meting/api';
 const YT_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
 
 function cors(res) {
@@ -36,15 +36,35 @@ export default {
       return cors(new Response(null, { status: 204 }));
     }
 
-    // 1) API 中转：/api?types=search&...  ->  https://music-api.gdstudio.xyz/api.php?types=search&...
+    // 1) API 中转：支持动态指定上游或默认 Meting 高速节点
     if (url.pathname === '/api') {
-      const target = UPSTREAM_API + '/api.php' + url.search;
+      const customUpstream = url.searchParams.get('upstream');
+      const base = (customUpstream || UPSTREAM_API).replace(/\/$/, '');
+      const searchParams = new URLSearchParams(url.search);
+      searchParams.delete('upstream');
+      let target = '';
+      if (/meting/i.test(base) || !/api\.php/i.test(base)) {
+        const types = searchParams.get('types');
+        if (types === 'search') {
+          target = `${base}?server=${searchParams.get('source') || 'netease'}&type=search&id=${encodeURIComponent(searchParams.get('name') || '')}`;
+        } else if (types === 'url') {
+          target = `${base}?server=${searchParams.get('source') || 'netease'}&type=url&id=${searchParams.get('id') || ''}`;
+        } else if (types === 'lyric') {
+          target = `${base}?server=${searchParams.get('source') || 'netease'}&type=lrc&id=${searchParams.get('id') || ''}`;
+        } else if (types === 'playlist') {
+          target = `${base}?server=${searchParams.get('source') || 'netease'}&type=playlist&id=${searchParams.get('id') || ''}`;
+        } else {
+          target = base + (searchParams.toString() ? '?' + searchParams.toString() : '');
+        }
+      } else {
+        target = base + (searchParams.toString() ? '?' + searchParams.toString() : '');
+      }
       try {
         const r = await fetch(target, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         const body = await r.text();
         return cors(new Response(body, {
           status: r.status,
-          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          headers: { 'Content-Type': r.headers.get('content-type') || 'application/json; charset=utf-8' },
         }));
       } catch (e) {
         return cors(new Response(JSON.stringify({ error: 'upstream failed' }), { status: 502 }));
