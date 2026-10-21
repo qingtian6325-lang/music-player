@@ -137,6 +137,7 @@
       <button id="lyrics-next" class="icon-btn" title="下一首"><span class="btn-ic" id="lyrics-next-ic"></span></button>
     </div>
     <div class="lyrics-tools">
+      <span id="lyrics-wakelock-badge" class="badge-tag green" title="已开启屏幕常亮（防休眠）" style="display:none; font-size:11px; padding:2px 7px; margin-right:4px;">☀ 常亮</span>
       <button id="lyrics-font-dec" class="ghost-btn icon-only sm" title="缩小歌词">A-</button>
       <button id="lyrics-font-inc" class="ghost-btn icon-only sm" title="放大歌词">A+</button>
       <button id="lyrics-copy" class="ghost-btn icon-only" title="复制歌词"><span class="btn-ic" id="lyrics-copy-ic"></span></button>
@@ -451,9 +452,10 @@
 <!-- 提示框 -->
 <div id="toast" class="toast" hidden></div>
 
-<!-- 桌面画中画悬浮歌词隐藏绘制载体 -->
+<!-- 桌面画中画悬浮歌词与屏幕常亮隐藏载体 -->
 <canvas id="pip-canvas" width="640" height="260" style="display:none"></canvas>
 <video id="pip-video" muted autoplay playsinline style="display:none"></video>
+<video id="wake-video" playsinline loop muted style="display:none"></video>
 
 <audio id="audio" preload="auto" crossorigin="anonymous"></audio>
 <script src="js/app.js?v=20261020r"></script>

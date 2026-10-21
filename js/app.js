@@ -220,6 +220,8 @@ document.documentElement.style.setProperty('--lyric-font-size', lyricFontSize + 
 function renderLyric(lines) {
   const body = $('lyrics-body');
   body.innerHTML = '';
+  currentLyricIndex = -1;
+  isUserScrollingLyrics = false;
   if (!lines.length) {
     body.innerHTML = '<div class="lyrics-empty">暂无歌词</div>';
     return;
@@ -229,14 +231,53 @@ function renderLyric(lines) {
     div.className = 'lyric-line';
     div.dataset.i = i;
     div.innerHTML = escapeHtml(ln.text) + (ln.trans ? `<span class="trans">${escapeHtml(ln.trans)}</span>` : '');
-    div.onclick = () => { audio.currentTime = ln.t + 0.01; };
+    div.onclick = () => {
+      audio.currentTime = ln.t + 0.01;
+      isUserScrollingLyrics = false;
+      centerCurrentLyric();
+    };
     body.appendChild(div);
   });
+  setTimeout(centerCurrentLyric, 80);
 }
 
 let lyricLines = [];
 let lyricDelayMs = parseInt(localStorage.getItem('mp_lyric_delay') || '520', 10) || 0;
 let currentLyricIndex = -1;
+let isUserScrollingLyrics = false;
+let userLyricsScrollTimer = null;
+
+function onLyricsUserScroll() {
+  isUserScrollingLyrics = true;
+  clearTimeout(userLyricsScrollTimer);
+  userLyricsScrollTimer = setTimeout(() => {
+    isUserScrollingLyrics = false;
+    centerCurrentLyric();
+  }, 2800);
+}
+
+function centerCurrentLyric(immediate = false) {
+  const panel = $('lyrics-panel');
+  if (!panel || panel.hidden) return;
+  const body = $('lyrics-body');
+  if (!body) return;
+  const cur = body.children[currentLyricIndex];
+  if (!cur || !cur.classList.contains('lyric-line')) return;
+
+  const bodyRect = body.getBoundingClientRect();
+  const curRect = cur.getBoundingClientRect();
+  const curCenter = curRect.top + curRect.height / 2;
+  const bodyCenter = bodyRect.top + bodyRect.height / 2;
+  const diff = curCenter - bodyCenter;
+
+  if (!immediate && Math.abs(diff) < 2) return;
+
+  const targetTop = body.scrollTop + diff;
+  body.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: immediate ? 'auto' : 'smooth'
+  });
+}
 
 function syncLyric() {
   if (!lyricLines.length) return;
@@ -245,17 +286,19 @@ function syncLyric() {
   for (let i = 0; i < lyricLines.length; i++) {
     if (lyricLines[i].t <= t + 0.15) idx = i; else break;
   }
-  currentLyricIndex = idx;
 
-  if (!$('lyrics-panel').hidden) {
-    const body = $('lyrics-body');
-    const prev = body.querySelector('.lyric-line.active');
-    const cur = body.children[idx];
-    if (prev !== cur) {
-      if (prev) prev.classList.remove('active');
+  if (currentLyricIndex !== idx) {
+    currentLyricIndex = idx;
+    if (!$('lyrics-panel').hidden) {
+      const body = $('lyrics-body');
+      const prev = body.querySelector('.lyric-line.active');
+      const cur = body.children[idx];
+      if (prev && prev !== cur) prev.classList.remove('active');
       if (cur) {
         cur.classList.add('active');
-        cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        if (!isUserScrollingLyrics) {
+          centerCurrentLyric();
+        }
       }
     }
   }
@@ -321,10 +364,12 @@ function openNowPlaying() {
   $('now-playing').hidden = false;
   $('now-playing').classList.toggle('paused', audio.paused);
   document.body.style.overflow = 'hidden';
+  updateScreenWakeState();
 }
 function closeNowPlaying() {
   $('now-playing').hidden = true;
   document.body.style.overflow = '';
+  updateScreenWakeState();
 }
 
 /* ---------- 播放器状态 ---------- */
@@ -1950,8 +1995,10 @@ $('theme-btn').onclick = () => {
 function setLyricsOpen(open) {
   $('lyrics-panel').hidden = !open;
   $('lyrics-btn').classList.toggle('active', open);
-  if (open) syncLyric();
-  else {
+  if (open) {
+    syncLyric();
+    setTimeout(centerCurrentLyric, 80);
+  } else {
     $('lyrics-panel').classList.remove('fullscreen');
     document.body.classList.remove('lyrics-fs');
     setIcon($('lyrics-full-ic'), 'expand');
@@ -1959,6 +2006,7 @@ function setLyricsOpen(open) {
       try { history.replaceState(null, '', location.pathname); } catch (e) {}
     }
   }
+  updateScreenWakeState();
 }
 function toggleLyricsFull() {
   const p = $('lyrics-panel');
@@ -1966,7 +2014,11 @@ function toggleLyricsFull() {
   const fs = p.classList.contains('fullscreen');
   document.body.classList.toggle('lyrics-fs', fs);
   setIcon($('lyrics-full-ic'), fs ? 'compress' : 'expand');
-  if (fs) syncLyricsAmbient();
+  if (fs) {
+    syncLyricsAmbient();
+  }
+  setTimeout(() => centerCurrentLyric(true), 80);
+  updateScreenWakeState();
 }
 function syncLyricsAmbient() {
   const t = currentTrack();
@@ -1981,6 +2033,8 @@ function openLyricsPage() {
   const p = $('lyrics-panel');
   if (!p.classList.contains('fullscreen')) toggleLyricsFull();
   try { history.replaceState(null, '', '#lyrics'); } catch (e) {}
+  updateScreenWakeState();
+  setTimeout(centerCurrentLyric, 100);
 }
 if (location.hash === '#lyrics') {
   setTimeout(() => { if (currentTrack()) openLyricsPage(); }, 800);
@@ -2009,6 +2063,13 @@ $('import-close').onclick = closeImportModal;
 $('import-modal').addEventListener('click', (e) => { if (e.target.id === 'import-modal') closeImportModal(); });
 $('import-url').addEventListener('keydown', (e) => { if (e.key === 'Enter') doImport(); });
 
+// 歌词滚动防打扰监听与窗口自适应
+$('lyrics-body').addEventListener('wheel', onLyricsUserScroll, { passive: true });
+$('lyrics-body').addEventListener('touchstart', onLyricsUserScroll, { passive: true });
+window.addEventListener('resize', () => {
+  if ($('lyrics-panel') && !$('lyrics-panel').hidden) centerCurrentLyric(true);
+});
+
 // 音频事件
 audio.addEventListener('timeupdate', () => {
   const cur = audio.currentTime, total = audio.duration || 0;
@@ -2035,6 +2096,7 @@ audio.addEventListener('play', () => {
   $('now-playing').classList.remove('paused');
   const a = $('ambient');
   if (a) a.classList.remove('paused');
+  updateScreenWakeState();
 });
 audio.addEventListener('pause', () => {
   setBuffering(false);
@@ -2042,6 +2104,7 @@ audio.addEventListener('pause', () => {
   $('now-playing').classList.add('paused');
   const a = $('ambient');
   if (a) a.classList.add('paused');
+  updateScreenWakeState();
 });
 audio.addEventListener('waiting', () => setBuffering(true));
 audio.addEventListener('playing', () => setBuffering(false));
@@ -2160,6 +2223,100 @@ $('logo-home').addEventListener('click', () => {
   }
 });
 
+/* ---------- 屏幕常亮防休眠控制 (Screen Wake Lock) ---------- */
+let wakeLockSentinel = null;
+let wakeVideoActive = false;
+
+function updateWakeBadge(active) {
+  const badge = $('lyrics-wakelock-badge');
+  if (badge) badge.style.display = active ? 'inline-flex' : 'none';
+}
+
+async function requestScreenWakeLock() {
+  if (wakeLockSentinel && !wakeLockSentinel.released) {
+    updateWakeBadge(true);
+    return;
+  }
+  if ('wakeLock' in navigator && navigator.wakeLock && navigator.wakeLock.request) {
+    try {
+      wakeLockSentinel = await navigator.wakeLock.request('screen');
+      wakeLockSentinel.addEventListener('release', () => {
+        wakeLockSentinel = null;
+        updateWakeBadge(false);
+      });
+      updateWakeBadge(true);
+      return;
+    } catch (e) {
+      // 静默处理浏览器省电模式限制
+    }
+  }
+  startWakeVideoFallback();
+}
+
+function releaseScreenWakeLock() {
+  if (wakeLockSentinel) {
+    try { wakeLockSentinel.release(); } catch (e) {}
+    wakeLockSentinel = null;
+  }
+  stopWakeVideoFallback();
+  updateWakeBadge(false);
+}
+
+function startWakeVideoFallback() {
+  if (wakeVideoActive) return;
+  const v = $('wake-video');
+  if (!v) return;
+  try {
+    if (!v.srcObject && !v.src) {
+      const c = document.createElement('canvas');
+      c.width = 2; c.height = 2;
+      const ctx = c.getContext('2d');
+      if (ctx) ctx.fillRect(0, 0, 2, 2);
+      if (c.captureStream) {
+        v.srcObject = c.captureStream(1);
+      } else {
+        v.src = 'data:video/mp4;base64,AAAAHGZ0eXBpc29tAAAAAGlzb21tcDQxAAAACHZpZGVvAAAAAA==';
+      }
+    }
+    const p = v.play();
+    if (p && p.catch) p.catch(() => {});
+    wakeVideoActive = true;
+    updateWakeBadge(true);
+  } catch (e) {}
+}
+
+function stopWakeVideoFallback() {
+  wakeVideoActive = false;
+  const v = $('wake-video');
+  if (v) {
+    try { v.pause(); } catch (e) {}
+  }
+}
+
+function shouldKeepScreenAwake() {
+  const lyricsOpen = $('lyrics-panel') && !$('lyrics-panel').hidden;
+  const nowPlayingOpen = $('now-playing') && !$('now-playing').hidden;
+  const isPlaying = !audio.paused && !audio.ended && audio.currentTime > 0;
+  return lyricsOpen || nowPlayingOpen || isPlaying;
+}
+
+function updateScreenWakeState() {
+  if (shouldKeepScreenAwake()) {
+    requestScreenWakeLock();
+  } else {
+    releaseScreenWakeLock();
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    updateScreenWakeState();
+  }
+});
+window.addEventListener('focus', () => {
+  updateScreenWakeState();
+});
+
 /* ---------- 初始化 ---------- */
 setIcon($('logo-icon'), 'music');
 setIcon($('nav-home-ic'), 'home');
@@ -2212,3 +2369,4 @@ applyTheme();
 renderCharts();
 renderSearchTags();
 updateQueueUI();
+updateScreenWakeState();
