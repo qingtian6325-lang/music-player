@@ -2380,10 +2380,17 @@ $('mnav-home').onclick = showHome;
 $('mnav-fav').onclick = showFav;
 $('mnav-search').onclick = () => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  setTimeout(() => $('search-input').focus(), 100);
+  setTimeout(() => {
+    $('search-input').focus();
+    $('search-tags-box').hidden = false;
+  }, 120);
 };
 $('mnav-queue').onclick = toggleQueue;
 $('mnav-more').onclick = () => ($('settings-modal').hidden = false);
+
+// 移动端轻点播放条信息展开全屏播放
+$('pb-title').onclick = () => { if (window.innerWidth <= 860) openNowPlaying(); };
+$('pb-artist').onclick = () => { if (window.innerWidth <= 860) openNowPlaying(); };
 
 // 播放控制
 $('play-btn').onclick = togglePlay;
