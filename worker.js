@@ -49,15 +49,21 @@ export default {
       const searchParams = new URLSearchParams(url.search);
       searchParams.delete('upstream');
 
+      const defaultChain = [
+        'https://music-api.gdstudio.xyz/api.php',
+        'https://music.gdstudio.xyz/api.php',
+        'https://met.liiiu.cn/meting/api',
+        'https://api.qijieya.cn/meting/',
+        'https://api.injahow.cn/meting/'
+      ];
       const tryEndpoints = [];
       if (customUpstream) {
         tryEndpoints.push(customUpstream.trim());
       }
-      // 默认瀑布降级链：GDStudio 优先 -> 失败或异常自然流转至 Meting 高速节点
-      tryEndpoints.push('https://music.gdstudio.xyz/api.php');
-      tryEndpoints.push('https://met.liiiu.cn/meting/api');
-      tryEndpoints.push('https://api.qijieya.cn/meting/');
-      tryEndpoints.push('https://api.injahow.cn/meting/');
+      // 默认瀑布降级链：GDStudio 专属独立 API 优先 -> GDStudio Web 节点 -> Meting -> Qijieya -> Injahow
+      for (const ep of defaultChain) {
+        if (!tryEndpoints.includes(ep)) tryEndpoints.push(ep);
+      }
 
       let lastError = null;
       for (const base of tryEndpoints) {

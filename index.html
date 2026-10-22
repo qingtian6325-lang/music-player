@@ -435,16 +435,17 @@
 
     <!-- 音乐 API 数据源服务选择 -->
     <h4 style="margin-bottom:6px">🌐 音乐 API 音源服务选择 (支持智能多源瀑布降级)</h4>
-    <p class="modal-desc">默认以 GDStudio 为主源，系统支持多源智能容灾：若主源请求无返回或异常，会自动逐级顺延至下一可用音源（Meting / Qijieya / Injahow 等），您也可以在此自由指定优先音源或自建节点。</p>
+    <p class="modal-desc">默认以 GDStudio 专属独立 API 节点为主源（第二优先级为官方 Web 节点），支持智能多源瀑布容灾（逐级流转至 Meting / Qijieya / Injahow 等），您也可以在此自由指定优先音源或自建节点。</p>
     <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:8px;">
       <select id="api-source-preset" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:13px; cursor:pointer;">
-        <option value="https://music.gdstudio.xyz/api.php">🌟 GDStudio (默认主源 · 失败智能容灾多源降级)</option>
+        <option value="https://music-api.gdstudio.xyz/api.php">⚡ GDStudio 专属独立 API 节点 (首选 · 高速稳定)</option>
+        <option value="https://music.gdstudio.xyz/api.php">🌟 GDStudio 官方 Web 节点 (次选备用)</option>
         <option value="https://met.liiiu.cn/meting/api">🚀 Meting 全网高速节点 (快速稳定)</option>
         <option value="https://api.qijieya.cn/meting/">🛡️ Qijieya 节点 (支持 VIP/黑胶解析)</option>
         <option value="https://api.injahow.cn/meting/">⚡ Injahow 节点 (备用 · 歌单/音频流)</option>
         <option value="custom">✏️ 自定义 API 地址 (Custom Endpoint)</option>
       </select>
-      <input id="api-source-input" type="text" placeholder="https://music.gdstudio.xyz/api.php" style="width:100%">
+      <input id="api-source-input" type="text" placeholder="https://music-api.gdstudio.xyz/api.php" style="width:100%">
     </div>
     <div class="modal-row">
       <button id="api-source-test" class="ghost-btn">测试延迟</button>
@@ -534,7 +535,7 @@
 <script>
   window.mkPlayer = { api: "api.php", version: "2026.09.25" };
 </script>
-<script src="js/crc32.min.js?v=20261021v7"></script>
-<script src="js/app.js?v=20261021v7"></script>
+<script src="js/crc32.min.js?v=20261022v1"></script>
+<script src="js/app.js?v=20261022v1"></script>
 </body>
 </html>

@@ -1,20 +1,28 @@
-/* 音乐播放器 - 多源聚合版 (GDStudio 优先 · 支持 Meting/Qijieya 智能瀑布容灾降级) */
-const GDSTUDIO_SOURCE = 'https://music.gdstudio.xyz/api.php';
-const DEFAULT_API_SOURCE = GDSTUDIO_SOURCE;
+/* 音乐播放器 - 多源聚合版 (GDStudio 独立 API 优先 · 官方 Web 次选 · 支持 Meting/Qijieya 智能瀑布容灾降级) */
+const GDSTUDIO_API_SOURCE = 'https://music-api.gdstudio.xyz/api.php';
+const GDSTUDIO_WEB_SOURCE = 'https://music.gdstudio.xyz/api.php';
+const DEFAULT_API_SOURCE = GDSTUDIO_API_SOURCE;
 const FAILOVER_SOURCES = [
+  'https://music-api.gdstudio.xyz/api.php',
   'https://music.gdstudio.xyz/api.php',
   'https://met.liiiu.cn/meting/api',
   'https://api.qijieya.cn/meting/',
   'https://api.injahow.cn/meting/'
 ];
 const API_PRESETS = [
-  { id: 'gdstudio', name: '🌟 GDStudio (默认主源 · 失败智能容灾多源降级)', url: 'https://music.gdstudio.xyz/api.php' },
+  { id: 'gdstudio-api', name: '⚡ GDStudio 专属独立 API 节点 (首选 · 高速稳定)', url: 'https://music-api.gdstudio.xyz/api.php' },
+  { id: 'gdstudio-web', name: '🌟 GDStudio 官方 Web 节点 (次选备用)', url: 'https://music.gdstudio.xyz/api.php' },
   { id: 'liiiu', name: '🚀 Meting 全网高速节点 (快速稳定)', url: 'https://met.liiiu.cn/meting/api' },
   { id: 'qijieya', name: '🛡️ Qijieya 节点 (支持 VIP/黑胶解析)', url: 'https://api.qijieya.cn/meting/' },
   { id: 'injahow', name: '⚡ Injahow 节点 (备用 · 歌单/音频流)', url: 'https://api.injahow.cn/meting/' }
 ];
 function currentApiSource() {
-  return (localStorage.getItem('mp_api_source') || DEFAULT_API_SOURCE).trim();
+  const saved = (localStorage.getItem('mp_api_source') || '').trim();
+  // 若用户此前保存的是旧的默认 Web 源，自动平滑升级为独立 API 源
+  if (!saved || saved === GDSTUDIO_WEB_SOURCE) {
+    return DEFAULT_API_SOURCE;
+  }
+  return saved;
 }
 function isMetingUrl(u) {
   return /meting/i.test(u) || !/api\.php/i.test(u);
@@ -2861,7 +2869,7 @@ if ($('api-source-reset')) {
     urlCache.clear();
     lyricCache.clear();
     $('api-source-status').style.color = 'var(--accent)';
-    $('api-source-status').textContent = '已恢复默认 GDStudio (多源智能容灾降级模式)。';
+    $('api-source-status').textContent = '已恢复默认 GDStudio (专属独立 API 首选 · 官方 Web 次选 · 多源智能容灾降级模式)。';
     toast('已恢复默认音源服务');
     renderCharts();
   };
