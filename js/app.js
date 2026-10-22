@@ -1089,20 +1089,9 @@ function updateMediaSessionMeta(track) {
         }
       });
     } catch (e) {}
-    try {
-      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-        const skip = details.seekOffset || 10;
-        audio.currentTime = Math.max(0, audio.currentTime - skip);
-        updateMediaSessionPosition(true);
-      });
-    } catch (e) {}
-    try {
-      navigator.mediaSession.setActionHandler('seekforward', (details) => {
-        const skip = details.seekOffset || 10;
-        audio.currentTime = Math.min(audio.currentTime + skip, audio.duration || 0);
-        updateMediaSessionPosition(true);
-      });
-    } catch (e) {}
+    // 明确注销快进/快退 10 秒处理器，强制 iOS 锁屏与控制中心显示【上一首】与【下一首】切歌按键（非播客模式）
+    try { navigator.mediaSession.setActionHandler('seekbackward', null); } catch (e) {}
+    try { navigator.mediaSession.setActionHandler('seekforward', null); } catch (e) {}
   } catch (e) {
     console.warn('MediaSession metadata 注册异常:', e);
   }
