@@ -49,6 +49,12 @@ const CHARTS = [
 
 const HOT_KEYWORDS = ['周杰伦', '陈奕迅', '林俊杰', '邓紫棋', 'Taylor Swift', '告白气球', '晴天', '起风了', '海阔天空', '枫'];
 
+/* ---------- 设备与系统特性识别 ---------- */
+const isIOS = typeof navigator !== 'undefined' && (
+  /iPad|iPhone|iPod/.test(navigator.userAgent || '') ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+);
+
 /* ---------- 工具 ---------- */
 const $ = (id) => document.getElementById(id);
 const fmtTime = (s) => {
@@ -634,6 +640,12 @@ function closeNowPlaying() {
 
 /* ---------- 播放器状态 ---------- */
 const audio = $('audio');
+if (audio) {
+  audio.playsInline = true;
+  audio.setAttribute('playsinline', '');
+  audio.setAttribute('webkit-playsinline', '');
+  audio.preload = 'auto';
+}
 let queue = [];        // 当前播放队列
 let qIndex = -1;       // 当前下标
 let playMode = 0;      // 0 顺序 1 随机 2 单曲循环
@@ -751,7 +763,6 @@ async function playTrack(index) {
   if (!$('lyrics-panel').hidden && $('lyrics-panel').classList.contains('fullscreen')) syncLyricsAmbient();
   if (!$('now-playing').hidden) syncNowPlaying(track);
   updateQueueUI();
-  tryInitAudioContext();
 
   let r = null;
 
@@ -842,7 +853,12 @@ async function playTrack(index) {
     return;
   }
 
-  audio.crossOrigin = 'anonymous';
+  // iOS Safari 下若带有 crossorigin 属性，在直连或重定向时极易触发 CORS 阻断导致后台断音
+  if (!isIOS && isEqEnabled) {
+    audio.crossOrigin = 'anonymous';
+  } else {
+    audio.removeAttribute('crossorigin');
+  }
   audio.src = audioSrc(r.url);
   track._cdnUrl = r.url;
   track._lastRes = r;
@@ -964,6 +980,11 @@ async function switchQuality(targetBr) {
     if (r && r.url) {
       track._cdnUrl = r.url;
       track._lastRes = r;
+      if (!isIOS && isEqEnabled) {
+        audio.crossOrigin = 'anonymous';
+      } else {
+        audio.removeAttribute('crossorigin');
+      }
       audio.src = audioSrc(r.url);
       audio.currentTime = curTime;
       if (!wasPaused) {
@@ -1016,21 +1037,99 @@ function updatePlayerMeta(track, loading) {
   updateFavBtn();
   document.title = `${track.name} - ${track.artist.join('/')} | 音乐播放器`;
 
+  updateMediaSessionMeta(track);
+}
+
+/* ---------- Media Session 控制与锁屏交互增强 (iOS / Android 锁屏与控制中心深度支持) ---------- */
+function updateMediaSessionMeta(track) {
+  if (!('mediaSession' in navigator) || !track) return;
   try {
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: track.name || '音乐播放器',
-        artist: track.artist.join(' / ') || '',
-        artwork: pic ? [{ src: pic, sizes: '512x512', type: 'image/jpeg' }] : []
-      });
-      navigator.mediaSession.setActionHandler('play', () => togglePlay());
-      navigator.mediaSession.setActionHandler('pause', () => togglePlay());
-      navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
-      navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack(false));
-      try { navigator.mediaSession.setActionHandler('seekbackward', null); } catch (e) {}
-      try { navigator.mediaSession.setActionHandler('seekforward', null); } catch (e) {}
+    let fullArtUrl = '';
+    const rawPic = track.pic ? imgSrc(track.pic) : '';
+    if (rawPic) {
+      try {
+        fullArtUrl = new URL(rawPic, window.location.href).href;
+      } catch (e) {
+        fullArtUrl = rawPic;
+      }
     }
+    const artistStr = Array.isArray(track.artist) ? track.artist.join(' / ') : String(track.artist || '');
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.name || '音乐播放器',
+      artist: artistStr || '未知歌手',
+      album: track.album || '多源音乐',
+      artwork: fullArtUrl ? [
+        { src: fullArtUrl, sizes: '96x96', type: 'image/jpeg' },
+        { src: fullArtUrl, sizes: '128x128', type: 'image/jpeg' },
+        { src: fullArtUrl, sizes: '256x256', type: 'image/jpeg' },
+        { src: fullArtUrl, sizes: '512x512', type: 'image/jpeg' }
+      ] : []
+    });
+
+    navigator.mediaSession.setActionHandler('play', () => {
+      audio.play().catch(() => {});
+    });
+    navigator.mediaSession.setActionHandler('pause', () => {
+      audio.pause();
+    });
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+      prevTrack();
+    });
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+      nextTrack(false);
+    });
+    try {
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime != null && isFinite(details.seekTime)) {
+          audio.currentTime = details.seekTime;
+          updateMediaSessionPosition(true);
+        }
+      });
+    } catch (e) {}
+    try {
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const skip = details.seekOffset || 10;
+        audio.currentTime = Math.max(0, audio.currentTime - skip);
+        updateMediaSessionPosition(true);
+      });
+    } catch (e) {}
+    try {
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const skip = details.seekOffset || 10;
+        audio.currentTime = Math.min(audio.currentTime + skip, audio.duration || 0);
+        updateMediaSessionPosition(true);
+      });
+    } catch (e) {}
+  } catch (e) {
+    console.warn('MediaSession metadata 注册异常:', e);
+  }
+}
+
+function updateMediaSessionPlaybackState(isPlaying) {
+  if (!('mediaSession' in navigator)) return;
+  try {
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
   } catch (e) {}
+}
+
+let lastPositionUpdateTime = 0;
+function updateMediaSessionPosition(force = false) {
+  if (!('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return;
+  const now = performance.now();
+  if (!force && now - lastPositionUpdateTime < 1200) return;
+  lastPositionUpdateTime = now;
+
+  const dur = audio.duration;
+  if (dur && isFinite(dur) && dur > 0) {
+    try {
+      const cur = Math.min(Math.max(0, audio.currentTime), dur);
+      navigator.mediaSession.setPositionState({
+        duration: dur,
+        playbackRate: audio.playbackRate || 1,
+        position: cur
+      });
+    } catch (e) {}
+  }
 }
 
 function updateFavBtn() {
@@ -1040,7 +1139,6 @@ function updateFavBtn() {
 }
 
 function togglePlay() {
-  tryInitAudioContext();
   if (!currentTrack()) { toast('先搜一首歌或打开榜单吧'); return; }
   if (audio.paused) {
     audio.play();
@@ -1989,8 +2087,9 @@ const EQ_PRESETS = {
 };
 
 function tryInitAudioContext() {
+  if (!isEqEnabled) return; // 均衡器关闭时保持原生 Audio 引擎，严禁劫持系统音频流以支持 iOS 后台播放
   if (audioCtx) {
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
     return;
   }
   try {
@@ -2020,8 +2119,6 @@ function tryInitAudioContext() {
     });
     lastNode.connect(analyserNode);
     analyserNode.connect(audioCtx.destination);
-
-    requestAnimationFrame(renderVisualizerLoop);
   } catch (e) {
     console.warn('Web Audio Context 初始化失败（可能由于跨域限制），将继续直接播放', e);
   }
@@ -2038,16 +2135,30 @@ function applyEqGains(gains) {
 }
 
 function renderVisualizerLoop() {
-  if (isVisualizerEnabled && analyserNode && !audio.paused) {
-    const bufferLength = analyserNode.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    analyserNode.getByteFrequencyData(dataArray);
-
+  if (isVisualizerEnabled && !audio.paused) {
+    let dataArray = null;
+    let bufferLength = 28;
+    if (analyserNode && audioCtx && audioCtx.state === 'running') {
+      bufferLength = analyserNode.frequencyBinCount;
+      dataArray = new Uint8Array(bufferLength);
+      analyserNode.getByteFrequencyData(dataArray);
+    } else {
+      // 优雅动感模拟频谱 (无需劫持系统音频流，绝不影响 iOS 后台与跨域限制)
+      dataArray = new Uint8Array(28);
+      const t = performance.now() * 0.005;
+      for (let i = 0; i < 28; i++) {
+        const wave = Math.sin(t * 1.5 + i * 0.4) * 0.5 + 0.5;
+        const wave2 = Math.cos(t * 0.8 + i * 0.7) * 0.5 + 0.5;
+        dataArray[i] = Math.floor((wave * 0.6 + wave2 * 0.4) * 200 + 35);
+      }
+    }
     drawVisualizerCanvas($('np-visualizer'), dataArray, bufferLength);
     drawVisualizerCanvas($('lyrics-visualizer'), dataArray, bufferLength);
   }
   requestAnimationFrame(renderVisualizerLoop);
 }
+// 启动频谱动画循环 (支持无 Web Audio 模式下的轻量平滑动效)
+requestAnimationFrame(renderVisualizerLoop);
 
 function drawVisualizerCanvas(canvas, data, len) {
   if (!canvas || canvas.hidden) return;
@@ -2443,17 +2554,22 @@ $('eq-close').onclick = () => ($('eq-modal').hidden = true);
 $('eq-modal').addEventListener('click', (e) => { if (e.target.id === 'eq-modal') $('eq-modal').hidden = true; });
 
 function openEqModal() {
-  tryInitAudioContext();
   $('eq-modal').hidden = false;
   $('eq-switch').checked = isEqEnabled;
   $('visualizer-switch').checked = isVisualizerEnabled;
 }
 $('eq-switch').onchange = (e) => {
   isEqEnabled = e.target.checked;
+  if (isEqEnabled) {
+    if (isIOS) {
+      toast('提示：iOS开启均衡器可能导致锁屏断音，原音模式支持完美后台');
+    }
+    tryInitAudioContext();
+  }
   const activePreset = document.querySelector('.preset-btn.active');
   const presetKey = activePreset ? activePreset.dataset.preset : 'flat';
   applyEqGains(EQ_PRESETS[presetKey] || EQ_PRESETS.flat);
-  toast(isEqEnabled ? '专业均衡器已开启' : '均衡器已关闭 (原音输出)');
+  toast(isEqEnabled ? '专业均衡器已开启' : '均衡器已关闭 (原音输出 · 支持锁屏后台)');
 };
 $('visualizer-switch').onchange = (e) => {
   isVisualizerEnabled = e.target.checked;
@@ -2641,8 +2757,10 @@ audio.addEventListener('timeupdate', () => {
   $('progress-fill').style.width = total ? (cur / total * 100) + '%' : '0%';
   if (currentTrack()) $('pb-artist').textContent = currentTrack().artist.join(' / ');
   syncLyric();
+  updateMediaSessionPosition(false);
 });
 audio.addEventListener('ended', () => {
+  updateMediaSessionPlaybackState(false);
   if (sleepStopOnTrackEnd) {
     cancelSleepTimer(false);
     audio.pause();
@@ -2653,7 +2771,6 @@ audio.addEventListener('ended', () => {
   nextTrack(true);
 });
 audio.addEventListener('play', () => {
-  tryInitAudioContext();
   setPlayIcon(true);
   $('player-bar').classList.remove('paused');
   $('now-playing').classList.remove('paused');
@@ -2661,6 +2778,8 @@ audio.addEventListener('play', () => {
   const a = $('ambient');
   if (a) a.classList.remove('paused');
   updateScreenWakeState();
+  updateMediaSessionPlaybackState(true);
+  updateMediaSessionPosition(true);
 });
 audio.addEventListener('pause', () => {
   setBuffering(false);
@@ -2670,12 +2789,18 @@ audio.addEventListener('pause', () => {
   const a = $('ambient');
   if (a) a.classList.add('paused');
   updateScreenWakeState();
+  updateMediaSessionPlaybackState(false);
+  updateMediaSessionPosition(true);
+});
+audio.addEventListener('loadedmetadata', () => {
+  updateMediaSessionPosition(true);
 });
 audio.addEventListener('waiting', () => setBuffering(true));
 audio.addEventListener('playing', () => setBuffering(false));
 audio.addEventListener('seeking', () => setBuffering(true));
 audio.addEventListener('seeked', () => {
   if (audio.readyState >= 3) setBuffering(false);
+  updateMediaSessionPosition(true);
 });
 
 let audioFallbackTried = false;
@@ -2969,6 +3094,7 @@ function releaseScreenWakeLock() {
 }
 
 function startWakeVideoFallback() {
+  if (isIOS) return; // iOS 严禁运行伪装 video 唤醒，避免劫持 iOS 原生后台音频会话
   if (wakeVideoActive) return;
   const v = $('wake-video');
   if (!v) return;
@@ -3000,14 +3126,16 @@ function stopWakeVideoFallback() {
 }
 
 function shouldKeepScreenAwake() {
+  // 仅在用户停留于歌词沉浸页或大图播放页、且音频正在播放时才尝试保持屏幕常亮
+  // 严禁在后台或锁屏时触发唤醒，确保 iOS / Android 系统锁屏能顺畅继续播放音频
   const lyricsOpen = $('lyrics-panel') && !$('lyrics-panel').hidden;
   const nowPlayingOpen = $('now-playing') && !$('now-playing').hidden;
   const isAudioPlaying = !audio.paused && !audio.ended && audio.currentTime > 0;
-  return lyricsOpen || nowPlayingOpen || isAudioPlaying;
+  return (lyricsOpen || nowPlayingOpen) && isAudioPlaying;
 }
 
 function updateScreenWakeState() {
-  if (shouldKeepScreenAwake()) {
+  if (document.visibilityState === 'visible' && shouldKeepScreenAwake()) {
     requestScreenWakeLock();
   } else {
     releaseScreenWakeLock();
@@ -3017,6 +3145,8 @@ function updateScreenWakeState() {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     updateScreenWakeState();
+  } else {
+    releaseScreenWakeLock();
   }
 });
 window.addEventListener('focus', () => {
