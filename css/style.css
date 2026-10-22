@@ -615,7 +615,7 @@ body.light .side-nav button:hover {
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 16px;
 }
-.chart-tile {
+.chart-card {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -628,22 +628,42 @@ body.light .side-nav button:hover {
   overflow: hidden;
   transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.22s, box-shadow 0.22s, background-color 0.22s;
 }
-.chart-tile:hover {
+.chart-card:hover {
   transform: translateY(-4px);
   background: var(--card-hover);
   border-color: var(--line-strong);
   box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.5);
 }
-.chart-tile img {
+.chart-tile {
   width: 100%;
   aspect-ratio: 1 / 1;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.25);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--muted);
+}
+.chart-tile img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.2);
+  z-index: 2;
   transition: transform 0.35s ease;
 }
-.chart-tile:hover img {
-  transform: scale(1.03);
+.chart-card:hover .chart-tile img {
+  transform: scale(1.05);
+}
+.chart-tile span {
+  position: relative;
+  z-index: 1;
 }
 .chart-name {
   font-size: 13.5px;
@@ -662,16 +682,16 @@ body.light .side-nav button:hover {
 }
 .chart-add-tile {
   border: 1.5px dashed var(--line-strong);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.02);
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
   color: var(--muted);
-  min-height: 190px;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-sm);
 }
-.chart-add-tile:hover {
+.chart-card:hover .chart-add-tile {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-dim);
@@ -756,7 +776,8 @@ body.light .ghost-btn {
 }
 .track-head {
   display: grid;
-  grid-template-columns: 44px 1fr 220px 80px 76px;
+  grid-template-columns: 44px 1fr 200px 70px 36px 36px;
+  gap: 8px;
   padding: 10px 14px;
   font-size: 11px;
   font-weight: 700;
@@ -767,7 +788,8 @@ body.light .ghost-btn {
 }
 .track-row {
   display: grid;
-  grid-template-columns: 44px 1fr 220px 80px 76px;
+  grid-template-columns: 44px 1fr 200px 70px 36px 36px;
+  gap: 8px;
   align-items: center;
   padding: 8px 14px;
   border-radius: var(--radius-md);
@@ -853,23 +875,42 @@ body.light .track-row:hover {
   gap: 4px;
 }
 .row-fav {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted-dim);
-  padding: 6px;
   border-radius: var(--radius-pill);
   transition: all 0.15s;
 }
+.row-fav svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+}
 .row-fav:hover {
   color: var(--rose);
-  transform: scale(1.15);
+  background: var(--rose-dim);
+  transform: scale(1.1);
 }
 .row-fav.loved {
   color: var(--rose);
 }
 .row-more {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted-dim);
-  padding: 6px;
   border-radius: var(--radius-pill);
   transition: all 0.15s;
+}
+.row-more svg {
+  width: 17px;
+  height: 17px;
+  display: block;
 }
 .row-more:hover {
   color: var(--text);
@@ -1116,7 +1157,8 @@ body.light .progress-wrap {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  width: 290px;
+  width: 320px;
+  flex-shrink: 0;
 }
 .pb-right .icon-btn {
   color: var(--muted);
@@ -1149,7 +1191,7 @@ body.light .progress-wrap {
 .quality-badge {
   font-size: 11px;
   font-weight: 800;
-  padding: 2.5px 8px;
+  padding: 3px 8px;
   border-radius: var(--radius-xs);
   background: linear-gradient(135deg, var(--gold) 0%, #d97706 100%);
   color: #000;
@@ -1157,6 +1199,12 @@ body.light .progress-wrap {
   letter-spacing: 0.04em;
   box-shadow: 0 2px 10px var(--gold-glow);
   transition: transform 0.15s, filter 0.15s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+}
 }
 .quality-badge:hover {
   transform: translateY(-1px);
@@ -1274,7 +1322,20 @@ body.light #vol-slider {
   to { transform: translateX(0); }
 }
 
+.panel-visualizer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 56px;
+  pointer-events: none;
+  opacity: 0.25;
+  z-index: 1;
+}
 .lyrics-head {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1488,7 +1549,19 @@ body.light .lyrics-panel.fullscreen {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   animation: fadeIn 0.3s ease;
+}
+.np-visualizer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 90px;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.35;
 }
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -2049,7 +2122,7 @@ body.light .lyrics-panel.fullscreen {
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
   }
-  .chart-tile {
+  .chart-card {
     padding: 10px;
     border-radius: var(--radius-sm);
   }
@@ -2199,6 +2272,24 @@ body.light .lyrics-panel.fullscreen {
     font-weight: 800;
     border-radius: var(--radius-pill);
     padding: 1px 4.5px;
+  }
+
+  .np-cover-wrap {
+    width: 240px;
+    height: 240px;
+  }
+  .np-title {
+    font-size: 19px;
+  }
+  .np-artist {
+    font-size: 13.5px;
+  }
+  .np-controls {
+    gap: 16px;
+  }
+  .np-controls .play-main {
+    width: 52px;
+    height: 52px;
   }
 
   /* 抽屉与全屏面板针对手机的自适应 */
