@@ -311,6 +311,31 @@ function getBrFallbackList(preferred) {
   return [128, 192, 320, 999];
 }
 
+const picCache = new Map();
+async function resolvePic(track) {
+  if (!track) return '';
+  if (track.pic) return track.pic;
+  const targetId = track.pic_id || track.id;
+  if (!targetId || track.source === 'youtube') return '';
+  const key = `${track.source || 'netease'}:${targetId}`;
+  if (picCache.has(key)) {
+    const cached = picCache.get(key);
+    if (cached) {
+      track.pic = cached;
+      return cached;
+    }
+  }
+  try {
+    const d = await api({ types: 'pic', source: track.source || 'netease', id: String(targetId) });
+    if (d && d.url) {
+      track.pic = d.url;
+      picCache.set(key, d.url);
+      return d.url;
+    }
+  } catch (e) {}
+  return '';
+}
+
 async function resolveUrl(source, id, preferredBr = null) {
   const pref = preferredBr || getPreferredQuality();
   const key = `${source}:${id}:${pref}`;
@@ -619,15 +644,24 @@ function syncNowPlaying(track) {
   $('np-bg').style.backgroundImage = url;
   $('np-cover').style.backgroundImage = url;
   $('np-glow').style.backgroundImage = url;
-  $('np-cover-char').textContent = pic ? '' : (track.name || '♪').charAt(0);
+  $('np-cover-char').textContent = '';
   $('np-title').textContent = track.name;
   $('np-artist').textContent = track.artist.join(' / ');
   setIcon($('np-mode'), MODE_ICONS[playMode]);
   $('np-mode').title = MODE_TIP[playMode];
 }
 function openNowPlaying() {
-  if (!currentTrack()) return;
-  syncNowPlaying(currentTrack());
+  const t = currentTrack();
+  if (!t) return;
+  if (!t.pic && (t.pic_id || t.id) && t.source !== 'youtube') {
+    resolvePic(t).then((picUrl) => {
+      if (picUrl && currentTrack() === t) {
+        syncNowPlaying(t);
+        updatePlayerMeta(t, audio.paused);
+      }
+    });
+  }
+  syncNowPlaying(t);
   $('now-playing').hidden = false;
   $('now-playing').classList.toggle('paused', audio.paused);
   document.body.style.overflow = 'hidden';
@@ -758,12 +792,31 @@ async function playTrack(index) {
   if (!track) return;
   qIndex = index;
   markPlayingRow();
+
+  const targetId = track.pic_id || track.id;
+  const picKey = `${track.source || 'netease'}:${targetId}`;
+  if (!track.pic && targetId && picCache.has(picKey)) {
+    track.pic = picCache.get(picKey);
+  }
+
   updatePlayerMeta(track, true);
   setBuffering(true);
   setAmbient(track.pic);
   if (!$('lyrics-panel').hidden && $('lyrics-panel').classList.contains('fullscreen')) syncLyricsAmbient();
   if (!$('now-playing').hidden) syncNowPlaying(track);
   updateQueueUI();
+
+  // 异步补全封面（针对搜索结果默认仅含 pic_id 的歌曲）
+  if (!track.pic && targetId && track.source !== 'youtube') {
+    resolvePic(track).then((picUrl) => {
+      if (picUrl && currentTrack() === track) {
+        updatePlayerMeta(track, audio.paused);
+        setAmbient(picUrl);
+        if (!$('lyrics-panel').hidden && $('lyrics-panel').classList.contains('fullscreen')) syncLyricsAmbient();
+        if (!$('now-playing').hidden) syncNowPlaying(track);
+      }
+    });
+  }
 
   let r = null;
 
@@ -1005,8 +1058,8 @@ async function switchQuality(targetBr) {
 function updatePlayerMeta(track, loading) {
   const pic = track.pic ? imgSrc(track.pic) : '';
   $('pb-tile').innerHTML = pic
-    ? `<img src="${pic}" alt="" onerror="this.outerHTML='<span>${escapeHtml((track.name || '♪').charAt(0))}</span>'">`
-    : `<span>${escapeHtml((track.name || '♪').charAt(0))}</span>`;
+    ? `<img src="${pic}" alt="" onerror="this.remove()">`
+    : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" opacity="0.4"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
   if ($('lyrics-panel') && !$('lyrics-panel').hidden) syncLyricsAmbient();
   const glow = $('pb-glow');
   if (pic) {
