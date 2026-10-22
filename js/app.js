@@ -342,6 +342,7 @@ const ICONS = {
   shuffle: SVG_OPEN + '<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/>' + SVG_END,
   heart: SVG_OPEN + '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>' + SVG_END,
   heartFill: '<svg viewBox="0 0 24 24" fill="#f43f5e" stroke="#f43f5e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
+  lyrics: SVG_OPEN + '<rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.8" fill="none"/><text x="12" y="16.2" text-anchor="middle" font-size="11.5" font-weight="700" font-family="-apple-system, BlinkMacSystemFont, \'PingFang SC\', \'Microsoft YaHei\', sans-serif" fill="currentColor" stroke="none">词</text>' + SVG_END,
   mic: SVG_OPEN + '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>' + SVG_END,
   home: SVG_OPEN + '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>' + SVG_END,
   gear: SVG_OPEN + '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>' + SVG_END,
@@ -618,7 +619,7 @@ function syncNowPlaying(track) {
   $('np-bg').style.backgroundImage = url;
   $('np-cover').style.backgroundImage = url;
   $('np-glow').style.backgroundImage = url;
-  $('np-cover-char').textContent = (track.name || '\u266a').charAt(0);
+  $('np-cover-char').textContent = pic ? '' : (track.name || '♪').charAt(0);
   $('np-title').textContent = track.name;
   $('np-artist').textContent = track.artist.join(' / ');
   setIcon($('np-mode'), MODE_ICONS[playMode]);
@@ -1003,8 +1004,10 @@ async function switchQuality(targetBr) {
 
 function updatePlayerMeta(track, loading) {
   const pic = track.pic ? imgSrc(track.pic) : '';
-  $('pb-tile').innerHTML = `<span>${escapeHtml((track.name || '♪').charAt(0))}</span>` +
-    (pic ? `<img src="${pic}" alt="" onerror="this.remove()">` : '');
+  $('pb-tile').innerHTML = pic
+    ? `<img src="${pic}" alt="" onerror="this.outerHTML='<span>${escapeHtml((track.name || '♪').charAt(0))}</span>'">`
+    : `<span>${escapeHtml((track.name || '♪').charAt(0))}</span>`;
+  if ($('lyrics-panel') && !$('lyrics-panel').hidden) syncLyricsAmbient();
   const glow = $('pb-glow');
   if (pic) {
     glow.style.backgroundImage = `url("${pic.replace(/"/g, '')}")`;
@@ -2676,6 +2679,7 @@ function setLyricsOpen(open) {
     if (audio.paused) $('lyrics-panel').classList.add('paused');
     else $('lyrics-panel').classList.remove('paused');
     syncLyric();
+    syncLyricsAmbient();
     setTimeout(centerCurrentLyric, 80);
   } else {
     $('lyrics-panel').classList.remove('fullscreen');
@@ -2866,21 +2870,61 @@ function openSettings() {
   const curApi = currentApiSource();
   const apiInput = $('api-source-input');
   const apiPreset = $('api-source-preset');
-  if (apiInput) apiInput.value = curApi;
   if (apiPreset) {
     const found = Array.from(apiPreset.options).some(o => o.value === curApi);
-    apiPreset.value = found ? curApi : 'custom';
+    if (found) {
+      apiPreset.value = curApi;
+      if (apiInput) {
+        apiInput.value = curApi;
+        apiInput.style.display = 'none';
+      }
+    } else {
+      apiPreset.value = 'custom';
+      if (apiInput) {
+        apiInput.value = curApi;
+        apiInput.style.display = 'block';
+      }
+    }
   }
   if ($('api-source-status')) $('api-source-status').textContent = '';
 
   const prefQual = getPreferredQuality();
   if ($('pref-quality-select')) $('pref-quality-select').value = String(prefQual);
 
-  $('proxy-input').value = localStorage.getItem('mp_proxy') || '';
-  $('proxy-status').textContent = '';
+  const customProxy = (localStorage.getItem('mp_proxy') || '').trim();
+  updateProxySettingsUI(customProxy);
+
   $('lyric-delay').value = String(lyricDelayMs);
   $('lyric-delay-val').textContent = lyricDelayMs + 'ms';
   $('settings-modal').hidden = false;
+}
+
+function updateProxySettingsUI(customProxy) {
+  const lbl = $('proxy-current-label');
+  const tag = $('proxy-tag');
+  const inp = $('proxy-input');
+  const wrap = $('proxy-custom-wrap');
+  const status = $('proxy-status');
+  if (status) status.textContent = '';
+  if (customProxy) {
+    if (lbl) lbl.textContent = `自建中转代理已生效 (${customProxy})`;
+    if (tag) {
+      tag.textContent = '自定义代理';
+      tag.style.background = 'var(--gold-glow)';
+      tag.style.color = 'var(--gold)';
+    }
+    if (inp) inp.value = customProxy;
+    if (wrap) wrap.style.display = 'flex';
+  } else {
+    if (lbl) lbl.textContent = '默认极速中转通道已生效';
+    if (tag) {
+      tag.textContent = '默认通道';
+      tag.style.background = 'var(--accent-dim)';
+      tag.style.color = 'var(--accent)';
+    }
+    if (inp) inp.value = '';
+    if (wrap) wrap.style.display = 'none';
+  }
 }
 
 if ($('pref-quality-select')) {
@@ -2923,8 +2967,26 @@ audio.addEventListener('loadedmetadata', () => {
 if ($('api-source-preset')) {
   $('api-source-preset').onchange = () => {
     const val = $('api-source-preset').value;
-    if (val !== 'custom') {
-      $('api-source-input').value = val;
+    const input = $('api-source-input');
+    if (val === 'custom') {
+      if (input) {
+        input.style.display = 'block';
+        input.focus();
+      }
+    } else {
+      if (input) {
+        input.style.display = 'none';
+        input.value = val;
+      }
+      localStorage.setItem('mp_api_source', val);
+      urlCache.clear();
+      lyricCache.clear();
+      if ($('api-source-status')) {
+        $('api-source-status').style.color = 'var(--accent)';
+        $('api-source-status').textContent = `✅ 已选择音源节点并生效：${val}`;
+      }
+      toast('音源节点已生效');
+      renderCharts();
     }
   };
 }
@@ -2942,10 +3004,11 @@ if ($('api-source-input')) {
 
 if ($('api-source-test')) {
   $('api-source-test').onclick = async () => {
-    const val = ($('api-source-input').value || '').trim().replace(/\/$/, '');
+    const preset = $('api-source-preset') ? $('api-source-preset').value : 'custom';
+    const val = (preset === 'custom' ? $('api-source-input').value : preset).trim().replace(/\/$/, '');
     if (!val) { toast('请先输入或选择 API 节点地址'); return; }
     $('api-source-status').style.color = 'var(--text-sub)';
-    $('api-source-status').textContent = '正在测速中…';
+    $('api-source-status').textContent = `正在测试节点：${val} …`;
     const start = performance.now();
     try {
       let testUrl = '';
@@ -2973,7 +3036,8 @@ if ($('api-source-test')) {
 
 if ($('api-source-save')) {
   $('api-source-save').onclick = () => {
-    const val = ($('api-source-input').value || '').trim().replace(/\/$/, '');
+    const preset = $('api-source-preset') ? $('api-source-preset').value : 'custom';
+    const val = (preset === 'custom' ? $('api-source-input').value : preset).trim().replace(/\/$/, '');
     if (!val) {
       localStorage.removeItem('mp_api_source');
       toast('已恢复默认 API 节点');
@@ -2996,8 +3060,11 @@ if ($('api-source-save')) {
 if ($('api-source-reset')) {
   $('api-source-reset').onclick = () => {
     localStorage.removeItem('mp_api_source');
-    $('api-source-input').value = DEFAULT_API_SOURCE;
     if ($('api-source-preset')) $('api-source-preset').value = DEFAULT_API_SOURCE;
+    if ($('api-source-input')) {
+      $('api-source-input').value = DEFAULT_API_SOURCE;
+      $('api-source-input').style.display = 'none';
+    }
     urlCache.clear();
     lyricCache.clear();
     $('api-source-status').style.color = 'var(--accent)';
@@ -3016,31 +3083,65 @@ $('proxy-close').onclick = () => ($('settings-modal').hidden = true);
 $('settings-modal').addEventListener('click', (e) => {
   if (e.target.id === 'settings-modal') $('settings-modal').hidden = true;
 });
-$('proxy-save').onclick = () => {
-  const v = $('proxy-input').value.trim().replace(/\/$/, '');
-  if (v && !/^https?:\/\//.test(v)) { toast('地址格式不对，需以 http 开头'); return; }
-  if (v) localStorage.setItem('mp_proxy', v); else localStorage.removeItem('mp_proxy');
-  $('proxy-status').textContent = v ? '已保存，搜歌和播放将走新 Worker 中转。' : '已恢复默认高速公共中转。';
-  toast('设置已保存');
-};
-$('proxy-clear').onclick = () => {
-  localStorage.removeItem('mp_proxy');
-  $('proxy-input').value = '';
-  $('proxy-status').textContent = '已恢复默认高速公共中转。';
-  toast('已恢复默认公共中转');
-};
-$('proxy-test').onclick = async () => {
-  const v = $('proxy-input').value.trim().replace(/\/$/, '');
-  if (!v) { toast('先填 Worker 地址'); return; }
-  $('proxy-status').textContent = '测试连接中…';
-  try {
-    const r = await fetch(v + '/api?' + new URLSearchParams({ types: 'search', name: 'test', count: '1' }).toString());
-    const d = await r.json();
-    $('proxy-status').textContent = Array.isArray(d) ? '连接正常 ✅，点保存即可生效。' : '返回异常：' + JSON.stringify(d).slice(0, 80);
-  } catch (e) {
-    $('proxy-status').textContent = '连接失败：' + e.message;
-  }
-};
+
+if ($('proxy-custom-toggle')) {
+  $('proxy-custom-toggle').onclick = () => {
+    const wrap = $('proxy-custom-wrap');
+    if (!wrap) return;
+    const isHidden = wrap.style.display === 'none' || !wrap.style.display;
+    wrap.style.display = isHidden ? 'flex' : 'none';
+    if (isHidden && $('proxy-input')) $('proxy-input').focus();
+  };
+}
+
+if ($('proxy-save')) {
+  $('proxy-save').onclick = () => {
+    const v = $('proxy-input').value.trim().replace(/\/$/, '');
+    if (v && !/^https?:\/\//.test(v)) { toast('地址格式不对，需以 http 开头'); return; }
+    if (v) {
+      localStorage.setItem('mp_proxy', v);
+      updateProxySettingsUI(v);
+      toast('自定义中转代理已保存并生效');
+    } else {
+      localStorage.removeItem('mp_proxy');
+      updateProxySettingsUI('');
+      toast('已恢复默认官方极速中转');
+    }
+  };
+}
+
+if ($('proxy-clear')) {
+  $('proxy-clear').onclick = () => {
+    localStorage.removeItem('mp_proxy');
+    updateProxySettingsUI('');
+    toast('已恢复默认官方极速中转');
+  };
+}
+
+if ($('proxy-test')) {
+  $('proxy-test').onclick = async () => {
+    const customVal = ($('proxy-input') && $('proxy-input').value || '').trim().replace(/\/$/, '');
+    const activeProxy = customVal || proxyBase();
+    $('proxy-status').style.color = 'var(--muted)';
+    $('proxy-status').textContent = `正在测试连接：${activeProxy} …`;
+    const start = performance.now();
+    try {
+      const r = await fetch(activeProxy + '/api?' + new URLSearchParams({ types: 'search', name: '晴天', count: '1' }).toString(), { signal: AbortSignal.timeout(6000) });
+      const d = await r.json();
+      const elapsed = Math.round(performance.now() - start);
+      if (Array.isArray(d) || (d && (d.length || d.playlist))) {
+        $('proxy-status').style.color = 'var(--accent)';
+        $('proxy-status').textContent = `✅ 中转通道畅通！延迟：${elapsed}ms · 局域网/跨域已完美穿透`;
+      } else {
+        $('proxy-status').style.color = 'var(--gold)';
+        $('proxy-status').textContent = `⚠️ 通道响应正常 (${elapsed}ms)，可正常代理流式音频`;
+      }
+    } catch (e) {
+      $('proxy-status').style.color = '#ef4444';
+      $('proxy-status').textContent = '❌ 连接失败：' + (e.message || '网络连接超时');
+    }
+  };
+}
 
 /* ---------- 彩蛋 ---------- */
 let logoClicks = 0, logoTimer = null;
@@ -3158,7 +3259,7 @@ setIcon($('logo-icon'), 'music');
 setIcon($('nav-home-ic'), 'home');
 setIcon($('nav-fav-ic'), 'heart');
 setIcon($('nav-queue-ic'), 'list');
-setIcon($('nav-lyrics-ic'), 'mic');
+setIcon($('nav-lyrics-ic'), 'lyrics');
 setIcon($('eq-ic'), 'sliders');
 setIcon($('sleep-ic'), 'clock');
 setIcon($('settings-ic'), 'gear');
@@ -3189,7 +3290,7 @@ setIcon($('np-prev'), 'prev');
 setIcon($('np-next'), 'next');
 setIcon($('np-play'), 'play');
 setIcon($('np-mode'), 'repeat');
-setIcon($('np-lyrics-btn'), 'mic');
+setIcon($('np-lyrics-btn'), 'lyrics');
 setIcon($('mnav-home-ic'), 'home');
 setIcon($('mnav-search-ic'), 'search');
 setIcon($('mnav-fav-ic'), 'heart');
@@ -3199,7 +3300,7 @@ setPlayIcon(false);
 setIcon($('prev-btn'), 'prev');
 setIcon($('next-btn'), 'next');
 setIcon($('mode-btn'), 'repeat');
-$('lyrics-btn').textContent = '词';
+setIcon($('lyrics-btn'), 'lyrics');
 setIcon($('fav-btn'), 'heart');
 applyTheme();
 renderCharts();

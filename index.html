@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>音乐播放器</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=20261022v8">
+<link rel="stylesheet" href="css/style.css?v=20261022v9">
 </head>
 <body>
 
@@ -445,7 +445,7 @@
         <option value="https://api.injahow.cn/meting/">⚡ Injahow 节点 (备用 · 歌单/音频流)</option>
         <option value="custom">✏️ 自定义 API 地址 (Custom Endpoint)</option>
       </select>
-      <input id="api-source-input" type="text" placeholder="https://music-api.gdstudio.xyz/api.php" style="width:100%">
+      <input id="api-source-input" type="text" placeholder="https://music-api.gdstudio.xyz/api.php" style="width:100%; display:none;">
     </div>
     <div class="modal-row">
       <button id="api-source-test" class="ghost-btn">测试延迟</button>
@@ -467,12 +467,25 @@
 
     <hr style="border-color:var(--line);margin:16px 0">
     <h4 style="margin-bottom:6px">🛡️ Cloudflare Worker 中转代理（办公室内网穿透）</h4>
-    <p class="modal-desc">本站默认使用高速中转（disablecdnblock.qingtian6325.workers.dev），点开即听，公司局域网也能顺畅使用。你也可以填自己的 Worker 地址覆盖它；清空则恢复默认中转。</p>
-    <input id="proxy-input" type="text" placeholder="https://你的worker.workers.dev" style="width:100%">
-    <div class="modal-row">
-      <button id="proxy-test" class="ghost-btn">测试连接</button>
-      <button id="proxy-save" class="primary-btn">保存</button>
-      <button id="proxy-clear" class="ghost-btn">恢复默认</button>
+    <p class="modal-desc" id="proxy-desc-text">默认启用官方极速中转通道，免配置点开即听，局域网与网络受限环境下顺畅播放音频与封面。</p>
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--bg); border:1px solid var(--line); border-radius:8px; margin-bottom:10px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--accent);"></span>
+        <span id="proxy-current-label" style="font-size:13px; font-weight:600; color:var(--text);">默认极速中转通道已生效</span>
+      </div>
+      <span id="proxy-tag" style="font-size:11px; padding:2px 8px; border-radius:4px; background:var(--accent-dim); color:var(--accent);">默认通道</span>
+    </div>
+    <div class="modal-row" style="margin-bottom:8px;">
+      <button id="proxy-test" class="ghost-btn">⚡ 测试中转连接</button>
+      <button id="proxy-custom-toggle" class="ghost-btn">✏️ 自定义中转代理</button>
+    </div>
+    <div id="proxy-custom-wrap" style="display:none; flex-direction:column; gap:8px; margin-bottom:8px; padding:12px; background:rgba(0,0,0,0.15); border-radius:8px; border:1px solid var(--line);">
+      <label style="font-size:12px; color:var(--muted);">输入您的自建 Cloudflare Worker 中转地址：</label>
+      <input id="proxy-input" type="text" placeholder="https://你的worker.workers.dev" style="width:100%">
+      <div class="modal-row" style="margin-top:4px;">
+        <button id="proxy-save" class="primary-btn">保存生效</button>
+        <button id="proxy-clear" class="ghost-btn">恢复默认中转</button>
+      </div>
     </div>
     <div id="proxy-status" class="proxy-status"></div>
 
@@ -536,6 +549,6 @@
   window.mkPlayer = { api: "api.php", version: "2026.09.25" };
 </script>
 <script src="js/crc32.min.js?v=20261022v1"></script>
-<script src="js/app.js?v=20261022v3"></script>
+<script src="js/app.js?v=20261022v4"></script>
 </body>
 </html>
