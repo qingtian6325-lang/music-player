@@ -75,15 +75,20 @@ function escapeHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/* 过滤 YouTube 标题中的 MV、官方、歌词等无关词，提高音源与歌词匹配成功率 */
+/* 过滤 YouTube / B站标题中的 MV、官方、歌词等无关词，提高音源与歌词匹配成功率 */
 function cleanSongTitle(title) {
   let s = String(title || '');
-  s = s.replace(/[【】\[\]\(\)「」『』]/g, ' ');
-  s = s.replace(/\b(?:Official\s*Music\s*Video|Official\s*Lyric\s*Video|Official\s*Audio|Official\s*Video|Music\s*Video|Lyric\s*Video|Full\s*Song|Full\s*Audio|4K|HD|1080P|MV|Official|官方|歌词版|完整版|高音质|无损|现场版|Live|Performance)\b/gi, ' ');
+  const bookMatch = s.match(/《([^》]{1,30})》/);
+  if (bookMatch && bookMatch[1].trim()) {
+    return bookMatch[1].trim();
+  }
+  s = s.replace(/【[^】]*】/g, ' ');
+  s = s.replace(/[【】\[\]\(\)「」『』《》｜|]/g, ' ');
+  s = s.replace(/\b(?:Official\s*Music\s*Video|Official\s*Lyric\s*Video|Official\s*Audio|Official\s*Video|Music\s*Video|Lyric\s*Video|Full\s*Song|Full\s*Audio|4K|HD|1080P|MV|Official|Hi-Res|HIFI|FLAC|官方|歌词版|完整版|高音质|无损音质|无损|现场版|后台播放|精选合集|合集|Live|Performance)\b/gi, ' ');
   s = s.replace(/[-_\|\/]\s*$/g, '');
   s = s.replace(/^\s*[-_\|\/]/g, '');
   s = s.replace(/\s+/g, ' ').trim();
-  return s;
+  return s || String(title || '').trim();
 }
 
 function matchYouTubeUrl(str) {
@@ -105,6 +110,79 @@ async function fetchJson(url) {
 /* 智能多源瀑布降级调度引擎：
  * 优先使用主源（默认 GDStudio），一旦无数据或异常，自然逐级顺延至 Meting / Qijieya / Injahow 等备用源
  */
+const GD_SUPPORTED_SOURCES = new Set([
+  'netease', 'kuwo', 'joox', 'bilibili', 'apple',
+  'tencent', 'migu', 'kugou', 'ytmusic', 'tidal', 'qobuz', 'deezer', 'spotify', 'ximalaya'
+]);
+const GD_CACHE_SOURCES = new Set([
+  'ytmusic', 'ytmusic_album', 'deezer', 'deezer_album',
+  'spotify', 'spotify_album', 'apple', 'apple_album'
+]);
+
+function signGd(str, offsetSec = 0) {
+  if (typeof window !== 'undefined' && typeof window.crc32 === 'function') {
+    try {
+      if (offsetSec) {
+        window.__gdTime = Math.floor(Date.now() / 1000) + offsetSec;
+      } else {
+        delete window.__gdTime;
+      }
+      const res = window.crc32(String(str));
+      delete window.__gdTime;
+      return res;
+    } catch (e) {
+      try { delete window.__gdTime; } catch (err) {}
+    }
+  }
+  return '';
+}
+
+function resolveGdAssetUrl(ep, rawUrl) {
+  if (!rawUrl || rawUrl === 'err') return '';
+  const u = String(rawUrl).trim();
+  if (!u || u === 'err') return '';
+  if (u.startsWith('//')) return 'https:' + u;
+  if (/^https?:\/\//i.test(u)) return u;
+  const base = String(ep || GDSTUDIO_WEB_SOURCE).replace(/api\.php.*$/i, '');
+  return (base.endsWith('/') ? base : base + '/') + u.replace(/^\/+/, '');
+}
+
+function fetchJsonp(baseUrl, qs, timeoutMs = 8500) {
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') {
+      reject(new Error('JSONP requires browser DOM'));
+      return;
+    }
+    const cbName = '__gd_jsonp_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+    const script = document.createElement('script');
+    let timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('JSONP timeout'));
+    }, timeoutMs);
+
+    function cleanup() {
+      clearTimeout(timer);
+      try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[cbName] = (data) => {
+      cleanup();
+      resolve(data);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error('JSONP script error'));
+    };
+
+    script.referrerPolicy = 'no-referrer';
+    const sep = baseUrl.includes('?') ? '&' : '?';
+    script.src = `${baseUrl}${sep}${qs}&callback=${cbName}`;
+    (document.head || document.documentElement).appendChild(script);
+  });
+}
+
 function normalizeArtistArray(raw) {
   if (Array.isArray(raw)) {
     const arr = raw.map(a => (typeof a === 'string' ? a.trim() : String((a && a.name) || '').trim())).filter(Boolean);
@@ -137,12 +215,21 @@ function normalizeSearchTrack(item, fallbackSource = 'netease', idx = 0) {
   const artist = normalizeArtistArray(item.artist != null ? item.artist : (item.author != null ? item.author : item.ar));
   const albumRaw = (item.al && item.al.name) || item.album || '';
   const album = typeof albumRaw === 'string' ? albumRaw : '';
-  const pic = String((item.al && item.al.picUrl) || item.pic || '').trim();
+  let pic = String((item.al && item.al.picUrl) || item.pic || '').trim();
   const picId = item.pic_id != null && String(item.pic_id) !== 'undefined' ? String(item.pic_id).trim() : '';
+  if (!pic && picId && (picId.startsWith('//') || /^https?:\/\//i.test(picId))) {
+    pic = picId.startsWith('//') ? 'https:' + picId : picId;
+  } else if (pic.startsWith('//')) {
+    pic = 'https:' + pic;
+  }
   const lyricId = item.lyric_id != null && String(item.lyric_id) !== 'undefined'
     ? String(item.lyric_id).trim()
     : (lrcIdMatch ? decodeURIComponent(lrcIdMatch[1]) : rawId);
   const src = String(item.source || fallbackSource || 'netease').trim();
+  const extra = (item.extra_data && typeof item.extra_data === 'object') ? item.extra_data : null;
+  const duration = Number(item.duration) || Number(extra && extra.duration) || (item.dt ? Math.round(Number(item.dt) / 1000) : 0);
+  const hasHires = Boolean(item.has_hires || (extra && extra.has_hires));
+  const isrc = String(item.isrc || (extra && extra.isrc) || '').trim();
 
   const out = {
     id: rawId,
@@ -153,7 +240,9 @@ function normalizeSearchTrack(item, fallbackSource = 'netease', idx = 0) {
     pic_id: picId,
     lyric_id: lyricId,
     source: src,
-    duration: Number(item.duration) || (item.dt ? Math.round(Number(item.dt) / 1000) : 0),
+    duration,
+    has_hires: hasHires,
+    isrc,
     _directUrl: urlStr
   };
   if (item.ytId) out.ytId = item.ytId;
@@ -174,17 +263,23 @@ function normalizeSearchList(list, fallbackSource = 'netease') {
 
 async function api(params) {
   const primary = currentApiSource();
-  const candidates = [primary, ...FAILOVER_SOURCES.filter(s => s !== primary)];
   const { types, source = 'netease', name = '', id = '', br = '320', count = '20', pages = '1' } = params;
   const server = (source === 'tencent' || source === 'qq') ? 'tencent' : 'netease';
-  const gdSource = (source === 'joox') ? 'joox' : 'netease';
+  const gdSource = GD_SUPPORTED_SOURCES.has(source) ? source : (source === 'qq' ? 'tencent' : 'netease');
 
-  for (const ep of candidates) {
+  // music-api.gdstudio.xyz 仅开放了 netease 单源；对于 kuwo / joox / bilibili / apple / autosource，优先调度支持全源的官方 Web 节点 (music.gdstudio.xyz)
+  let baseCandidates = [primary, ...FAILOVER_SOURCES.filter(s => s !== primary)];
+  if ((gdSource !== 'netease' || types === 'autosource') && primary === GDSTUDIO_API_SOURCE) {
+    baseCandidates = [GDSTUDIO_WEB_SOURCE, ...baseCandidates.filter(s => s !== GDSTUDIO_WEB_SOURCE)];
+  }
+
+  for (const ep of baseCandidates) {
     const isMeting = isMetingUrl(ep);
     try {
       if (isMeting) {
-        // Meting 仅支持 netease 与 tencent，跳过 joox 等不兼容源以避免串源或生成无效 404 链接
-        if (source === 'joox' || source === 'bilibili') continue;
+        // Meting 仅支持 netease 与 tencent，跳过 kuwo / joox / bilibili / apple 等源以避免串源或生成无效 404 链接
+        if (gdSource !== 'netease' && gdSource !== 'tencent') continue;
+        if (types === 'autosource') continue;
 
         const metingBase = ep.includes('/api') ? ep : (ep.endsWith('/') ? ep : ep + '/');
         const sep = metingBase.includes('?') ? '&' : '?';
@@ -233,82 +328,128 @@ async function api(params) {
           return { url: `${metingBase}${sep}server=${server}&type=pic&id=${id}` };
         }
       } else {
-        // GDStudio (api.php) - 优先浏览器直连（原生支持 CORS Simple Request，速度最快且不触发 Worker IP 拦截）
-        let qs = '';
-        let signKey = '';
-        if (types === 'search') {
-          const encName = gdUrlEncode(name);
-          signKey = encName;
-          let s = '';
-          if (typeof window !== 'undefined' && typeof window.crc32 === 'function') {
-            try { s = window.crc32(signKey); } catch (e) {}
-          }
-          qs = `types=search&count=${count || 20}&source=${gdSource}&pages=${pages || 1}&name=${encName}${s ? '&s=' + s : ''}`;
-        } else if (types === 'playlist' || types === 'userlist') {
-          signKey = String(id || '');
-          let s = '';
-          if (typeof window !== 'undefined' && typeof window.crc32 === 'function') {
-            try { s = window.crc32(signKey); } catch (e) {}
-          }
-          qs = `types=${types}&id=${encodeURIComponent(signKey)}${s ? '&s=' + s : ''}`;
-        } else if (types === 'url') {
-          signKey = String(id || '');
-          let s = '';
-          if (typeof window !== 'undefined' && typeof window.crc32 === 'function') {
-            try { s = window.crc32(signKey); } catch (e) {}
-          }
-          qs = `types=url&id=${encodeURIComponent(signKey)}&source=${gdSource}&br=${br || 320}${s ? '&s=' + s : ''}`;
-        } else if (types === 'lyric') {
-          signKey = String(params.lyric_id || id || '');
-          let s = '';
-          if (typeof window !== 'undefined' && typeof window.crc32 === 'function') {
-            try { s = window.crc32(signKey); } catch (e) {}
-          }
-          qs = `types=lyric&id=${encodeURIComponent(signKey)}&source=${gdSource}${s ? '&s=' + s : ''}`;
-        } else if (types === 'pic') {
-          signKey = String(id || '');
-          let s = '';
-          if (typeof window !== 'undefined' && typeof window.crc32 === 'function') {
-            try { s = window.crc32(signKey); } catch (e) {}
-          }
-          qs = `types=pic&id=${encodeURIComponent(signKey)}&source=${gdSource}&size=300${s ? '&s=' + s : ''}`;
-        } else {
-          qs = new URLSearchParams(params).toString();
+        // music-api.gdstudio.xyz 仅开放了 netease 单源（及 joox 仅搜索），跳过其不支持的源以免无谓耗时
+        if (ep === GDSTUDIO_API_SOURCE && (types === 'autosource' || (gdSource !== 'netease' && !(gdSource === 'joox' && types === 'search')))) {
+          continue;
         }
 
+        // GDStudio (api.php) - 严格遵循官方 ajax.js 签名协议 (使用 gdUrlEncode 后的字符串计算 crc32)
+        const buildGdQs = (offsetSec = 0) => {
+          if (types === 'search') {
+            const encName = gdUrlEncode(name);
+            const s = signGd(encName, offsetSec);
+            return `types=search&count=${count || 20}&source=${gdSource}&pages=${pages || 1}&name=${encName}${s ? '&s=' + s : ''}`;
+          }
+          if (types === 'playlist' || types === 'userlist') {
+            const encId = gdUrlEncode(String(id || ''));
+            const s = signGd(encId, offsetSec);
+            return `types=${types}&id=${encId}${s ? '&s=' + s : ''}`;
+          }
+          if (types === 'url') {
+            const encId = gdUrlEncode(String(id || ''));
+            const s = signGd(encId, offsetSec);
+            return `types=url&id=${encId}&source=${gdSource}&br=${br || 320}${s ? '&s=' + s : ''}`;
+          }
+          if (types === 'lyric') {
+            const encId = gdUrlEncode(String(params.lyric_id || id || ''));
+            const s = signGd(encId, offsetSec);
+            return `types=lyric&id=${encId}&source=${gdSource}${s ? '&s=' + s : ''}`;
+          }
+          if (types === 'pic') {
+            const encId = gdUrlEncode(String(id || ''));
+            const s = signGd(encId, offsetSec);
+            return `types=pic&id=${encId}&source=${gdSource}&size=300${s ? '&s=' + s : ''}`;
+          }
+          if (types === 'autosource') {
+            const encPayload = gdUrlEncode(name);
+            const s = signGd(encPayload, offsetSec);
+            return `types=autosource&source=${gdSource}&br=${br || 320}&name=${encPayload}${s ? '&s=' + s : ''}`;
+          }
+          return new URLSearchParams(params).toString();
+        };
+
+        let qs = buildGdQs(0);
         const u = `${ep}?${qs}`;
         let data = null;
         let directOk = false;
+        const jsonpTimeout = (types === 'url' && GD_CACHE_SOURCES.has(gdSource)) || types === 'autosource' ? 12000 : 8000;
+        const adjacentOffset = () => ((Date.now() % 10000) >= 5000 ? 5 : -5);
 
-        // 1. 浏览器直连 GDStudio (不附带自定义 User-Agent 头，保持 CORS Simple Request 零预检开销)
-        try {
-          const res = await fetch(u, { signal: AbortSignal.timeout(4500) });
-          if (res.ok) {
-            data = await res.json();
-            if (data && !data.detail && !data.error) {
-              directOk = true;
-            } else {
-              data = null;
-            }
-          }
-        } catch (e) {}
-
-        // 2. 若直连网络不通（例如受限内网拦截了 gdstudio.xyz），则通过 Worker 代理兜底
-        const proxy = proxyBase();
-        if (!directOk && proxy && ep !== GDSTUDIO_WEB_SOURCE) {
+        if (ep === GDSTUDIO_WEB_SOURCE || /music\.gdstudio\.(xyz|org)/i.test(ep)) {
+          // 官方 Web 节点 (music.gdstudio.xyz) 原生通过 JSONP 响应跨域请求，支持全部 5 大音源 (网易云/酷我/JOOX/B站/Apple)
           try {
-            const pRes = await fetch(`${proxy}/api?upstream=${encodeURIComponent(ep)}&${qs}`, { signal: AbortSignal.timeout(4500) });
-            if (pRes.ok) {
-              const rawText = await pRes.text();
-              if (types === 'lyric' && rawText.trim().startsWith('[')) {
-                return { lyric: rawText, tlyric: '' };
+            const jpData = await fetchJsonp(ep, qs, jsonpTimeout);
+            if (jpData && !jpData.detail && !jpData.error) {
+              data = jpData;
+              directOk = true;
+            }
+          } catch (e) {}
+          // 若恰好跨 10 秒时间戳边界导致签名 401，立即使用相邻时间窗口重试一次
+          if (!directOk) {
+            try {
+              const retryQs = buildGdQs(adjacentOffset());
+              const jpData = await fetchJsonp(ep, retryQs, jsonpTimeout);
+              if (jpData && !jpData.detail && !jpData.error) {
+                data = jpData;
+                directOk = true;
               }
-              const parsed = JSON.parse(rawText);
-              if (parsed && !parsed.error && !parsed.detail) {
+            } catch (e) {}
+          }
+        } else {
+          // 1. 独立 API 节点 (music-api.gdstudio.xyz) 优先浏览器 CORS Simple Request 直连
+          try {
+            const res = await fetch(u, { signal: AbortSignal.timeout(4500) });
+            if (res.ok) {
+              const parsed = await res.json();
+              if (parsed && !parsed.detail && !parsed.error) {
                 data = parsed;
+                directOk = true;
               }
             }
           } catch (e) {}
+
+          if (!directOk) {
+            try {
+              const retryQs = buildGdQs(adjacentOffset());
+              const res = await fetch(`${ep}?${retryQs}`, { signal: AbortSignal.timeout(4500) });
+              if (res.ok) {
+                const parsed = await res.json();
+                if (parsed && !parsed.detail && !parsed.error) {
+                  data = parsed;
+                  directOk = true;
+                }
+              }
+            } catch (e) {}
+          }
+
+          // 2. 若 CORS 受阻则尝试 JSONP
+          if (!directOk) {
+            try {
+              const jpData = await fetchJsonp(ep, qs, jsonpTimeout);
+              if (jpData && !jpData.detail && !jpData.error) {
+                data = jpData;
+                directOk = true;
+              }
+            } catch (e) {}
+          }
+
+          // 3. 若直连网络不通（例如受限内网拦截了 gdstudio.xyz），则通过 Worker 代理兜底
+          const proxy = proxyBase();
+          if (!directOk && proxy) {
+            try {
+              const pRes = await fetch(`${proxy}/api?upstream=${encodeURIComponent(ep)}&${qs}`, { signal: AbortSignal.timeout(4500) });
+              if (pRes.ok) {
+                const rawText = await pRes.text();
+                if (types === 'lyric' && rawText.trim().startsWith('[')) {
+                  return { lyric: rawText, tlyric: '' };
+                }
+                const parsed = JSON.parse(rawText);
+                if (parsed && !parsed.error && !parsed.detail) {
+                  data = parsed;
+                }
+              }
+            } catch (e) {}
+          }
         }
 
         if (!data || data.detail || data.error) throw new Error((data && (data.detail || data.error)) || 'GDStudio error');
@@ -323,16 +464,23 @@ async function api(params) {
         if (types === 'search' && Array.isArray(data)) {
           const normalized = normalizeSearchList(data, gdSource);
           if (normalized.length > 0) return normalized;
+          if (directOk && ep === GDSTUDIO_WEB_SOURCE) return [];
         }
-        if (types === 'url') {
-          if (data.url) return data;
-          if (directOk && 'url' in data && !data.url) {
-            // GDStudio 节点在线且明确告知此曲目无直链（例如版权限制或 JOOX 锁区），立即返回以便触发跨源匹配
+        if (types === 'url' || types === 'autosource') {
+          if (data.url && data.url !== 'err') {
+            data.url = resolveGdAssetUrl(ep, data.url);
+            if (data.pic) data.pic = resolveGdAssetUrl(ep, data.pic);
+            return data;
+          }
+          if (directOk && 'url' in data && (!data.url || data.url === 'err') && ep === GDSTUDIO_WEB_SOURCE) {
             return { url: '', _noUrl: true };
           }
         }
         if (types === 'lyric' && (data.lyric || data.tlyric)) return data;
-        if (types === 'pic' && data.url) return data;
+        if (types === 'pic' && data.url && data.url !== 'err') {
+          data.url = resolveGdAssetUrl(ep, data.url);
+          return data;
+        }
         throw new Error('GDStudio response empty');
       }
     } catch (err) {
@@ -345,18 +493,25 @@ async function api(params) {
   if (types === 'lyric') return { lyric: '', tlyric: '' };
   return null;
 }
-/* 音频地址：设置了中转则走 Worker 流式转发，否则直链 */
+/* 音频地址：HTTPS 原生 CDN 直链（网易云/酷我/JOOX/B站/Apple）优先由浏览器直接播放（低延迟且避免 Worker 520 拦截），YouTube 或 HTTP 链接走 Worker 转发 */
 function audioSrc(cdnUrl) {
+  if (!cdnUrl) return '';
+  const u = String(cdnUrl).trim();
   const proxy = proxyBase();
-  return proxy ? proxy + '/audio?src=' + encodeURIComponent(cdnUrl) : cdnUrl;
+  if (/googlevideo\.com/i.test(u) || (u.startsWith('http://') && typeof location !== 'undefined' && location.protocol === 'https:')) {
+    return proxy ? proxy + '/audio?src=' + encodeURIComponent(u) : u;
+  }
+  return u;
 }
-/* 封面地址：走 Worker /img 中转；即使在公司内网封锁了 YouTube / 126.net 也能正常显示 */
+/* 封面地址：走 Worker /img 中转；GDStudio 自有缓存节点直连 */
 function imgSrc(u) {
   if (!u) return '';
-  let url = String(u).replace(/"/g, '');
+  let url = String(u).replace(/"/g, '').trim();
+  if (url.startsWith('//')) url = 'https:' + url;
   if (url.includes('music.126.net') && !url.includes('param=')) {
     url += (url.includes('?') ? '&' : '?') + 'param=400y400';
   }
+  if (/gdstudio\.(xyz|org)/i.test(url)) return url;
   const proxy = proxyBase();
   return proxy ? proxy + '/img?src=' + encodeURIComponent(url) : url;
 }
@@ -369,9 +524,9 @@ function getPreferredQuality() {
 
 function getBrFallbackList(preferred) {
   const p = parseInt(preferred, 10) || 999;
-  if (p >= 900) return [999, 740, 320, 192, 128];
-  if (p >= 300) return [320, 192, 128, 999];
-  return [128, 192, 320, 999];
+  if (p >= 900) return [999, 320];
+  if (p >= 300) return [320, 128];
+  return [128, 320];
 }
 
 const picCache = new Map();
@@ -404,7 +559,8 @@ async function resolveUrl(source, id, preferredBr = null) {
   const pref = preferredBr || getPreferredQuality();
   const key = `${source}:${id}:${pref}`;
   if (urlCache.has(key)) return urlCache.get(key);
-  const brList = getBrFallbackList(pref);
+  const isDynamicSource = (source === 'bilibili' || source === 'apple' || GD_CACHE_SOURCES.has(source));
+  const brList = isDynamicSource ? [pref] : getBrFallbackList(pref);
   for (const br of brList) {
     try {
       const d = await api({ types: 'url', source, id, br: String(br) });
@@ -418,6 +574,32 @@ async function resolveUrl(source, id, preferredBr = null) {
       }
     } catch (e) { /* 换下一档 */ }
   }
+  return null;
+}
+
+async function resolveAutosource(track) {
+  if (!track || track.source === 'bilibili' || track.source === 'youtube') return null;
+  const name = String(track.name || '').trim();
+  const artist = Array.isArray(track.artist) && track.artist.length ? String(track.artist[0]).trim() : '';
+  const album = String(track.album || '').trim();
+  const isrc = String(track.isrc || '').trim();
+  const duration = Number(track.duration) || 0;
+  if (!name && !isrc) return null;
+  try {
+    const payload = JSON.stringify({ name, artist, album, isrc, duration });
+    const d = await api({
+      types: 'autosource',
+      source: track.source || 'netease',
+      br: String(getPreferredQuality()),
+      name: payload
+    });
+    if (d && d.url && d.url !== 'err') {
+      if (d.pic && !track.pic) track.pic = d.pic;
+      if (d.lyric) track._rawLyric = d.lyric;
+      if (d.tlyric) track._rawTlyric = d.tlyric;
+      return { url: d.url, br: Number(d.br) || 320, size: Number(d.size) || 0 };
+    }
+  } catch (e) {}
   return null;
 }
 
@@ -529,14 +711,27 @@ async function loadLyric(track) {
       }
     }
 
+    if (track._rawLyric) {
+      lines = parseLrc(track._rawLyric, track._rawTlyric || '');
+      if (lines.length) {
+        lyricCache.set(key, lines);
+        return lines;
+      }
+    }
+
     let lid = track.lyric_id;
     let lsrc = track._lyricSource || (track.source === 'youtube' ? 'netease' : track.source);
 
-    // YouTube 歌曲或无 lyric_id 歌曲：自动通过智能清洗后的歌名+歌手检索歌词
-    if (!lid) {
+    if (lid && lsrc !== 'bilibili') {
+      const d = await api({ types: 'lyric', source: lsrc, id: lid });
+      if (d && (d.lyric || d.tlyric)) lines = parseLrc(d.lyric || '', d.tlyric || '');
+    }
+
+    // YouTube / B站歌曲或原平台无歌词歌曲：自动通过智能清洗后的歌名+歌手跨源检索同步歌词
+    if (!lines.length) {
       const cleanName = cleanSongTitle(track.name);
-      const artistStr = (track.artist || []).filter(a => a !== 'YouTube').join(' ');
-      let query = (cleanName + ' ' + artistStr).trim();
+      const artistStr = (track.artist || []).filter(a => a !== 'YouTube' && a !== '未知歌手').join(' ');
+      let query = (lsrc === 'bilibili' ? cleanName : (cleanName + ' ' + artistStr)).trim();
       let d = await api({ types: 'search', source: 'netease', name: query, count: '3' });
       let list = Array.isArray(d) ? d : [];
 
@@ -551,16 +746,13 @@ async function loadLyric(track) {
       }
 
       if (list.length > 0) {
-        lid = String(list[0].lyric_id || list[0].id);
-        lsrc = list[0].source || 'netease';
-        track.lyric_id = lid;
-        track._lyricSource = lsrc;
+        const matchLid = String(list[0].lyric_id || list[0].id);
+        const matchSrc = list[0].source || 'netease';
+        const lrcRes = await api({ types: 'lyric', source: matchSrc, id: matchLid });
+        if (lrcRes && (lrcRes.lyric || lrcRes.tlyric)) {
+          lines = parseLrc(lrcRes.lyric || '', lrcRes.tlyric || '');
+        }
       }
-    }
-
-    if (lid) {
-      const d = await api({ types: 'lyric', source: lsrc, id: lid });
-      if (d && (d.lyric || d.tlyric)) lines = parseLrc(d.lyric || '', d.tlyric || '');
     }
   } catch (e) {
     console.warn('Lyric load error:', e);
@@ -854,9 +1046,11 @@ async function resolveYouTubeAudioAndLyrics(track) {
   return null;
 }
 
+let playSessionId = 0;
 async function playTrack(index) {
   const track = queue[index];
   if (!track) return;
+  const mySession = ++playSessionId;
   qIndex = index;
   markPlayingRow();
 
@@ -935,21 +1129,29 @@ async function playTrack(index) {
         nextTrack();
         return;
       }
-      if (qIndex !== index) return;
+      if (mySession !== playSessionId || currentTrack() !== track) return;
       markPlayingRow();
     }
 
-        // 优先调用 resolveUrl 获取最高品质（无损 Hi-Res / FLAC / 320K）
+    // 优先调用 resolveUrl 获取最高品质（无损 Hi-Res / FLAC / 320K）
     r = await resolveUrl(track.source, track.id);
+    if (mySession !== playSessionId || currentTrack() !== track) return;
+    // 若主源受版权或地区限制无直链，优先调用 GDStudio 官方 autosource 自动换源引擎
+    if (!r) {
+      r = await resolveAutosource(track);
+      if (mySession !== playSessionId || currentTrack() !== track) return;
+    }
     if (!r) {
       try {
         const cleanName = cleanSongTitle(track.name);
         const query = (cleanName + ' ' + (track.artist || []).join(' ')).trim();
         const matched = await api({ types: 'search', source: 'netease', name: query, count: '5' });
+        if (mySession !== playSessionId || currentTrack() !== track) return;
         const candidates = normalizeSearchList(matched, 'netease');
         for (const best of candidates) {
           if (String(best.id) === String(track.id) && track.source === 'netease') continue;
           const tryRes = (await resolveUrl('netease', best.id)) || (best._directUrl ? { url: best._directUrl, br: 320 } : null);
+          if (mySession !== playSessionId || currentTrack() !== track) return;
           if (tryRes && tryRes.url) {
             track.id = String(best.id);
             track.source = 'netease';
@@ -988,7 +1190,7 @@ async function playTrack(index) {
     }
   }
 
-  if (qIndex !== index) return;
+  if (mySession !== playSessionId || currentTrack() !== track) return;
   if (!r || !r.url) {
     toast('这首歌暂无可播放地址，已自动跳过');
     setBuffering(false);
@@ -1030,6 +1232,22 @@ function formatQualityInfo(r, track) {
       text: `YouTube · ${kbps}K`,
       cls: 'quality-yt',
       title: `YouTube 官方原声音频流 (${kbps}kbps ${r.mimeType || 'Opus'})`
+    };
+  }
+  if (track && track.source === 'bilibili') {
+    const kbps = r.br && r.br > 0 ? Math.round(r.br) : 180;
+    return {
+      text: `B站 · ${kbps}K`,
+      cls: 'quality-high',
+      title: `Bilibili 原生动态码率音频流 (${kbps}kbps)`
+    };
+  }
+  if (track && track.source === 'apple') {
+    const kbps = r.br && r.br > 0 ? Math.round(r.br) : 256;
+    return {
+      text: `AAC · ${kbps}K`,
+      cls: 'quality-high',
+      title: `Apple Music 高品质 AAC 音频 (${kbps}kbps)`
     };
   }
 
@@ -1418,7 +1636,8 @@ function renderTrackList(tracks, title, subtitle = '') {
     row.className = 'track-row';
     row.dataset.key = trackKey(t);
     const loved = favorites.some((f) => f.id === t.id && f.source === t.source);
-    const albumDisplay = t.album || (t.source === 'youtube' ? 'YouTube' : '—');
+    const sourceLabelMap = { netease: '网易云', kuwo: '酷我音乐', joox: 'JOOX', bilibili: 'B站音乐', apple: '苹果 Apple', youtube: 'YouTube' };
+    const albumDisplay = t.album || sourceLabelMap[t.source] || '—';
     row.innerHTML = `
       <span class="track-idx">${i + 1}</span>
       <div class="track-main">
@@ -2067,11 +2286,12 @@ async function doSearch(isLoadMore = false) {
         }));
       }
     }
-    // 3. 🌐 全网聚合搜索（并发请求网易云 + JOOX + YouTube，去重整合）
+    // 3. 🌐 全网聚合搜索（并发请求网易云 + 酷我 + JOOX + YouTube，去重整合）
     else if (searchSource === 'all') {
       const promises = [
-        api({ types: 'search', source: 'netease', name: searchKeyword, count: '15', pages: String(searchPage) }),
-        api({ types: 'search', source: 'joox', name: searchKeyword, count: '15', pages: String(searchPage) })
+        api({ types: 'search', source: 'netease', name: searchKeyword, count: '12', pages: String(searchPage) }),
+        api({ types: 'search', source: 'kuwo', name: searchKeyword, count: '10', pages: String(searchPage) }),
+        api({ types: 'search', source: 'joox', name: searchKeyword, count: '10', pages: String(searchPage) })
       ];
       const proxy = proxyBase();
       if (proxy) {
@@ -2082,37 +2302,29 @@ async function doSearch(isLoadMore = false) {
       const combined = [];
       const seen = new Set();
 
-      // 网易云结果
-      if (results[0].status === 'fulfilled' && Array.isArray(results[0].value)) {
-        normalizeSearchList(results[0].value, 'netease').forEach(s => {
-          const key = (s.name + '|' + s.artist.join(',')).toLowerCase();
-          if (!seen.has(key)) {
-            seen.add(key);
-            combined.push({
-              ...s,
-              album: s.album ? (s.album.includes('网易云') ? s.album : `${s.album} · 网易云`) : '网易云',
-              source: 'netease'
-            });
-          }
-        });
-      }
-      // JOOX 结果（填补海外版权）
-      if (results[1].status === 'fulfilled' && Array.isArray(results[1].value)) {
-        normalizeSearchList(results[1].value, 'joox').forEach(s => {
-          const key = (s.name + '|' + s.artist.join(',')).toLowerCase();
-          if (!seen.has(key)) {
-            seen.add(key);
-            combined.push({
-              ...s,
-              album: s.album ? (s.album.includes('JOOX') ? s.album : `${s.album} · JOOX`) : 'JOOX 海外',
-              source: 'joox'
-            });
-          }
-        });
-      }
+      const mergeSourceResults = (resIdx, srcCode, srcLabel) => {
+        if (results[resIdx] && results[resIdx].status === 'fulfilled' && Array.isArray(results[resIdx].value)) {
+          normalizeSearchList(results[resIdx].value, srcCode).forEach(s => {
+            const key = (s.name + '|' + s.artist.join(',')).toLowerCase();
+            if (!seen.has(key)) {
+              seen.add(key);
+              combined.push({
+                ...s,
+                album: s.album ? (s.album.includes(srcLabel) ? s.album : `${s.album} · ${srcLabel}`) : srcLabel,
+                source: srcCode
+              });
+            }
+          });
+        }
+      };
+
+      mergeSourceResults(0, 'netease', '网易云');
+      mergeSourceResults(1, 'kuwo', '酷我');
+      mergeSourceResults(2, 'joox', 'JOOX');
+
       // YouTube 结果
-      if (results[2] && results[2].status === 'fulfilled' && Array.isArray(results[2].value)) {
-        normalizeSearchList(results[2].value, 'youtube').forEach(s => {
+      if (results[3] && results[3].status === 'fulfilled' && Array.isArray(results[3].value)) {
+        normalizeSearchList(results[3].value, 'youtube').forEach(s => {
           const key = (cleanSongTitle(s.name) + '|' + s.artist.join(',')).toLowerCase();
           if (!seen.has(key)) {
             seen.add(key);
@@ -2123,10 +2335,10 @@ async function doSearch(isLoadMore = false) {
 
       newTracks = combined;
     }
-    // 4. 其他单个音源
+    // 4. 其他单个音源 (网易云 netease / 酷我 kuwo / JOOX joox / B站 bilibili / 苹果 apple)
     else {
       const d = await api({ types: 'search', source: searchSource, name: searchKeyword, count: '20', pages: String(searchPage) });
-      newTracks = normalizeSearchList(d, searchSource === 'bilibili' ? 'netease' : searchSource);
+      newTracks = normalizeSearchList(d, searchSource);
     }
 
     currentSearchTracks = [...currentSearchTracks, ...newTracks];
@@ -2907,19 +3119,29 @@ audio.addEventListener('seeked', () => {
 
 let audioFallbackTried = false;
 audio.addEventListener('error', () => {
+  if (!audio.getAttribute('src')) return;
   const t = currentTrack();
   if (t && t._cdnUrl && !audioFallbackTried) {
     audioFallbackTried = true;
-    toast('中转连接不畅，尝试直连…');
-    // 移除 crossorigin 避免直链 CDN 不支持 CORS 时被阻断
     audio.removeAttribute('crossorigin');
-    audio.src = t._cdnUrl;
-    audio.play().catch(() => {});
-  } else {
-    setBuffering(false);
-    toast(`《${t ? t.name : '当前歌曲'}》音频加载失败，已自动跳过`);
-    nextTrack(false);
+    const proxy = proxyBase();
+    const canProxy = proxy && !/gdstudio\.(xyz|org)/i.test(t._cdnUrl);
+    const proxiedUrl = canProxy ? proxy + '/audio?src=' + encodeURIComponent(t._cdnUrl) : t._cdnUrl;
+    if (audio.src === t._cdnUrl && proxiedUrl !== t._cdnUrl) {
+      toast('直连受阻，正在切换中转通道…');
+      audio.src = proxiedUrl;
+      audio.play().catch(() => {});
+      return;
+    } else if (audio.src !== t._cdnUrl) {
+      toast('中转连接不畅，尝试直连…');
+      audio.src = t._cdnUrl;
+      audio.play().catch(() => {});
+      return;
+    }
   }
+  setBuffering(false);
+  toast(`《${t ? t.name : '当前歌曲'}》音频加载失败，已自动跳过`);
+  nextTrack(false);
 });
 
 // 全局快捷键
@@ -3109,14 +3331,26 @@ if ($('api-source-test')) {
     $('api-source-status').textContent = `正在测试节点：${val} …`;
     const start = performance.now();
     try {
-      let testUrl = '';
+      let d = null;
       if (isMetingUrl(val)) {
-        testUrl = `${val}?server=netease&type=search&id=${encodeURIComponent('晴天')}`;
+        const testUrl = `${val}?server=netease&type=search&id=${encodeURIComponent('晴天')}`;
+        const r = await fetch(testUrl, { signal: AbortSignal.timeout(6000) });
+        d = await r.json();
       } else {
-        testUrl = `${val}${val.includes('?') ? '&' : '?'}types=search&source=netease&name=${encodeURIComponent('晴天')}&count=1`;
+        const encKw = gdUrlEncode('晴天');
+        const s = signGd(encKw);
+        const qs = `types=search&source=netease&name=${encKw}&count=1${s ? '&s=' + s : ''}`;
+        if (/music\.gdstudio\.(xyz|org)/i.test(val)) {
+          d = await fetchJsonp(val, qs, 6000);
+        } else {
+          try {
+            const r = await fetch(`${val}${val.includes('?') ? '&' : '?'}${qs}`, { signal: AbortSignal.timeout(5000) });
+            d = await r.json();
+          } catch (err) {
+            d = await fetchJsonp(val, qs, 6000);
+          }
+        }
       }
-      const r = await fetch(testUrl, { signal: AbortSignal.timeout(6000) });
-      const d = await r.json();
       const elapsed = Math.round(performance.now() - start);
       if (Array.isArray(d) || (d && d.length) || (d && d.playlist)) {
         $('api-source-status').style.color = 'var(--accent)';
