@@ -83,12 +83,108 @@ function cleanSongTitle(title) {
     return bookMatch[1].trim();
   }
   s = s.replace(/【[^】]*】/g, ' ');
+  s = s.replace(/[\(\[\{][^\)\]\}]*\b(?:Official|Video|Audio|Lyric|Lyrics|Remaster|Remastered|HD|4K|HQ|Upgrade|Version|Edit|Visualizer|Live|MV|Clip|19\d\d|20\d\d)\b[^\)\]\}]*[\)\]\}]/gi, ' ');
+  s = s.replace(/[\(\[\{]\s*(?:19\d\d|20\d\d)\s*[\)\]\}]/g, ' ');
   s = s.replace(/[【】\[\]\(\)「」『』《》｜|]/g, ' ');
-  s = s.replace(/\b(?:Official\s*Music\s*Video|Official\s*Lyric\s*Video|Official\s*Audio|Official\s*Video|Music\s*Video|Lyric\s*Video|Full\s*Song|Full\s*Audio|4K|HD|1080P|MV|Official|Hi-Res|HIFI|FLAC|官方|歌词版|完整版|高音质|无损音质|无损|现场版|后台播放|精选合集|合集|Live|Performance)\b/gi, ' ');
+  s = s.replace(/\b(?:Official\s*Music\s*Video|Official\s*Lyric\s*Video|Official\s*Audio|Official\s*Video|Music\s*Video|Lyric\s*Video|Full\s*Song|Full\s*Audio|4K|HD|HQ|1080P|MV|Official|Hi-Res|HIFI|FLAC|Remastered|Remaster|Upgrade|Visualizer|官方|歌词版|完整版|高音质|无损音质|无损|现场版|后台播放|精选合集|合集|Live|Performance)\b/gi, ' ');
   s = s.replace(/[-_\|\/]\s*$/g, '');
   s = s.replace(/^\s*[-_\|\/]/g, '');
   s = s.replace(/\s+/g, ' ').trim();
   return s || String(title || '').trim();
+}
+
+function cleanArtistName(artist) {
+  const raw = Array.isArray(artist) ? artist.join(' ') : String(artist || '');
+  return raw
+    .replace(/\s*-\s*Topic\b/gi, ' ')
+    .replace(/\b(?:Official|VEVO|Videos|Video|Music|Channel|YouTube|未知歌手)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseYouTubeTitleAndArtist(track) {
+  const rawTitle = String((track && (track.name || track.title)) || '').trim();
+  const ct = cleanSongTitle(rawTitle);
+  const ca = cleanArtistName(track && track.artist);
+  let targetSong = ct;
+  let targetArtist = ca;
+
+  if (ct.includes(' - ')) {
+    const parts = ct.split(' - ').map(p => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      targetArtist = parts[0];
+      targetSong = parts.slice(1).join(' ');
+    }
+  }
+  const queries = [];
+  if (targetSong && targetArtist) {
+    queries.push(`${targetSong} ${targetArtist}`.trim());
+    queries.push(`${targetArtist} ${targetSong}`.trim());
+  }
+  const flatCt = ct.replace(/\s+-\s+/g, ' ').trim();
+  if (ca && flatCt && !flatCt.toLowerCase().includes(ca.toLowerCase())) {
+    queries.push(`${flatCt} ${ca}`.trim());
+  }
+  if (flatCt) queries.push(flatCt);
+  if (targetSong && targetSong.length >= 2) queries.push(targetSong);
+
+  return {
+    targetSong: targetSong.toLowerCase(),
+    targetArtist: targetArtist.toLowerCase(),
+    queries: [...new Set(queries.filter(Boolean))]
+  };
+}
+
+function scoreYouTubeCandidate(cand, targetSong, targetArtist) {
+  let score = 0;
+  const cName = String(cand.name || '').toLowerCase();
+  const cArtist = (Array.isArray(cand.artist) ? cand.artist.join(' ') : String(cand.artist || '')).toLowerCase();
+  if (targetArtist && cArtist.includes(targetArtist)) score += 50;
+  else if (targetArtist) {
+    const words = targetArtist.split(/\s+/).filter(w => w.length > 2);
+    if (words.length && words.every(w => cArtist.includes(w))) score += 40;
+  }
+  if (targetSong && cName === targetSong) score += 30;
+  else if (targetSong && (cName.includes(targetSong) || targetSong.includes(cName))) score += 15;
+  if (/cover|tribute|karaoke|instrumental|伴奏|翻唱/i.test(cName + ' ' + cArtist)) score -= 25;
+  return score;
+}
+
+async function ensureYouTubeMeta(track) {
+  if (!track) return;
+  const vid = track.youtubeId || track.ytId || String(track.id || '').replace(/^yt_/, '');
+  if (!vid || !/^[a-zA-Z0-9_-]{11}$/.test(vid)) return;
+  const isPlaceholder = !track.name || track.name.startsWith('YouTube 单曲') || track.name === 'YouTube 视频' || track.name === '未知曲目';
+  if (!isPlaceholder && track.artist && track.artist.length && track.artist[0] !== 'YouTube') return;
+
+  try {
+    const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(vid)}&format=json`, {
+      signal: AbortSignal.timeout(4000)
+    });
+    if (res.ok) {
+      const d = await res.json();
+      if (d && d.title) {
+        if (isPlaceholder) track.name = d.title;
+        if (d.author_name && (!track.artist || !track.artist.length || track.artist[0] === 'YouTube')) {
+          track.artist = [cleanArtistName(d.author_name) || d.author_name];
+        }
+        if (!track.pic && d.thumbnail_url) track.pic = d.thumbnail_url;
+        return;
+      }
+    }
+  } catch (e) {}
+
+  const proxy = proxyBase();
+  if (proxy) {
+    try {
+      const info = await fetchJson(`${proxy}/yt-info?id=${encodeURIComponent(vid)}`);
+      if (info && info.name && isPlaceholder) {
+        track.name = info.name;
+        if (info.artist && info.artist.length) track.artist = info.artist;
+        if (!track.pic && info.pic) track.pic = info.pic;
+      }
+    } catch (e) {}
+  }
 }
 
 function matchYouTubeUrl(str) {
@@ -986,61 +1082,111 @@ function updateQueueUI() {
   renderQueueDrawer();
 }
 
-/* ---------- YouTube 歌曲原生音频与同步歌词解析器 (办公室内网穿透) ---------- */
+/* ---------- YouTube 歌曲高保真音频与同步歌词智能解析器 ---------- */
 async function resolveYouTubeAudioAndLyrics(track) {
   if (track._resolvedAudioUrl) {
-    return { url: track._resolvedAudioUrl, br: track._resolvedBr || 320 };
+    return {
+      url: track._resolvedAudioUrl,
+      br: track._resolvedBr || 320,
+      size: track._resolvedSize || 0
+    };
   }
-  const vid = track.youtubeId || track.ytId || (track.id || '').replace(/^yt_/, '');
-  if (!vid) return null;
+  const vid = track.youtubeId || track.ytId || String(track.id || '').replace(/^yt_/, '');
 
-  const proxy = proxyBase();
-  let info = null;
-
-  // 1. 优先通过 Worker /yt-player 获取 YouTube 原生高保真音频流及字幕
-  if (proxy) {
-    try {
-      info = await fetchJson(`${proxy}/yt-player?id=${encodeURIComponent(vid)}`);
-    } catch (e) {}
+  // 1. 确保单曲链接或未补全曲目拥有真实的 YouTube 标题与作者
+  await ensureYouTubeMeta(track);
+  if (currentTrack() === track) {
+    updatePlayerMeta(track, true);
   }
 
-  // 2. 如果 Worker 未配置或未响应，尝试直接从 YouTube 接口获取
-  if (!info || !info.audioUrl) {
-    try {
-      const YT_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
-      const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${YT_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoId: vid,
-          context: { client: { clientName: 'ANDROID_VR', clientVersion: '1.61.48' } }
-        })
-      });
-      if (res.ok) {
-        const d = await res.json();
-        const formats = d.streamingData?.adaptiveFormats || [];
-        const audios = formats.filter(f => f.mimeType && f.mimeType.startsWith('audio/'));
-        if (audios.length) {
-          audios.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-          const sel = audios.find(a => a.mimeType.includes('audio/mp4')) || audios[0];
-          info = {
-            audioUrl: sel.url,
-            bitrate: sel.bitrate || 128000,
-            duration: parseInt(d.videoDetails?.lengthSeconds || '0', 10),
-            lyrics: ''
-          };
+  // 2. 优先通过清洗后的「歌名 + 原唱歌手」在 GDStudio 多源引擎 (网易云 / 酷我 / JOOX) 匹配 Hi-Res / 320K 高保真音源与同步歌词
+  const { targetSong, targetArtist, queries } = parseYouTubeTitleAndArtist(track);
+  const matchSources = ['netease', 'kuwo', 'joox'];
+
+  for (const src of matchSources) {
+    for (const q of queries.slice(0, 2)) {
+      try {
+        const rawList = await api({ types: 'search', source: src, name: q, count: '6' });
+        const candidates = normalizeSearchList(rawList, src);
+        if (!candidates.length) continue;
+
+        candidates.sort((a, b) => scoreYouTubeCandidate(b, targetSong, targetArtist) - scoreYouTubeCandidate(a, targetSong, targetArtist));
+
+        for (const best of candidates.slice(0, 3)) {
+          const tryRes = (await resolveUrl(src, best.id)) || (best._directUrl ? { url: best._directUrl, br: 320, size: 0 } : null);
+          if (tryRes && tryRes.url) {
+            track._matchedId = String(best.id);
+            track._matchedSource = src;
+            track.lyric_id = String(best.lyric_id || best.id);
+            track._lyricSource = src;
+            track._resolvedAudioUrl = tryRes.url;
+            track._resolvedBr = Number(tryRes.br) || 320;
+            track._resolvedSize = Number(tryRes.size) || 0;
+            if (!track.pic && best.pic) track.pic = best.pic;
+            return {
+              url: tryRes.url,
+              br: track._resolvedBr,
+              size: track._resolvedSize
+            };
+          }
         }
+      } catch (e) {}
+    }
+  }
+
+  // 3. 若常规音源未命中，调用 GDStudio 官方 autosource 自动换源引擎
+  try {
+    const autoTrack = {
+      name: targetSong || cleanSongTitle(track.name),
+      artist: targetArtist ? [targetArtist] : (track.artist || []),
+      album: '',
+      duration: track.duration || 0,
+      source: 'netease'
+    };
+    const autoRes = await resolveAutosource(autoTrack);
+    if (autoRes && autoRes.url) {
+      if (autoTrack._rawLyric) track._rawLyric = autoTrack._rawLyric;
+      if (autoTrack._rawTlyric) track._rawTlyric = autoTrack._rawTlyric;
+      track._resolvedAudioUrl = autoRes.url;
+      track._resolvedBr = Number(autoRes.br) || 320;
+      track._resolvedSize = Number(autoRes.size) || 0;
+      return {
+        url: autoRes.url,
+        br: track._resolvedBr,
+        size: track._resolvedSize
+      };
+    }
+  } catch (e) {}
+
+  // 4. 尝试 GDStudio ytmusic 缓存节点（仅采用已落盘至 gdstudio 缓存节点的可用音频流，过滤 googlevideo IP 锁死直链）
+  if (vid && /^[a-zA-Z0-9_-]{11}$/.test(vid)) {
+    try {
+      const ytGd = await api({ types: 'url', source: 'ytmusic', id: vid, br: '320' });
+      if (ytGd && ytGd.url && Number(ytGd.br) > 0 && !/googlevideo\.com/i.test(ytGd.url) && !/^https?:\/\/[^\/]+\/?$/i.test(ytGd.url)) {
+        track._resolvedAudioUrl = ytGd.url;
+        track._resolvedBr = Number(ytGd.br) || 160;
+        track._resolvedSize = Number(ytGd.size) || 0;
+        return {
+          url: ytGd.url,
+          br: track._resolvedBr,
+          size: track._resolvedSize
+        };
       }
     } catch (e) {}
   }
 
-  if (info && info.audioUrl) {
-    track._resolvedAudioUrl = info.audioUrl;
-    track._resolvedBr = Math.round((info.bitrate || 128000) / 1000);
-    if (info.lyrics) {
-      track._rawLrc = info.lyrics;
-    }
-    return { url: info.audioUrl, br: track._resolvedBr };
+  // 5. 最后兜底：通过 Worker /yt-player 尝试解析
+  const proxy = proxyBase();
+  if (proxy && vid) {
+    try {
+      const info = await fetchJson(`${proxy}/yt-player?id=${encodeURIComponent(vid)}`);
+      if (info && info.audioUrl) {
+        track._resolvedAudioUrl = info.audioUrl;
+        track._resolvedBr = Math.round((info.bitrate || 128000) / 1000);
+        if (info.lyrics) track._rawLrc = info.lyrics;
+        return { url: info.audioUrl, br: track._resolvedBr };
+      }
+    } catch (e) {}
   }
 
   return null;
@@ -1227,11 +1373,20 @@ function formatQualityInfo(r, track) {
   if (!r) return { text: '320K', cls: 'quality-high', title: '极高音质 (320kbps)' };
 
   if (track && track.source === 'youtube') {
-    const kbps = r.br ? Math.round(r.br > 1000 ? r.br / 1000 : r.br) : 160;
+    const urlStr = String(r.url || '').toLowerCase();
+    const isFlac = urlStr.includes('.flac') || (r.mimeType && r.mimeType.includes('flac'));
+    const kbps = r.br ? Math.round(r.br > 1000 ? r.br / 1000 : r.br) : 320;
+    if (isFlac || kbps >= 700) {
+      return {
+        text: `YouTube · ${kbps >= 900 ? 'Hi-Res' : 'FLAC'}`,
+        cls: kbps >= 900 ? 'quality-hires' : 'quality-lossless',
+        title: `YouTube 曲目 · 已智能匹配高解析无损母带 (${kbps === 999 ? 'Hi-Res' : kbps + 'kbps'} FLAC)`
+      };
+    }
     return {
       text: `YouTube · ${kbps}K`,
       cls: 'quality-yt',
-      title: `YouTube 官方原声音频流 (${kbps}kbps ${r.mimeType || 'Opus'})`
+      title: `YouTube 曲目 · 高品质音频流 (${kbps}kbps)`
     };
   }
   if (track && track.source === 'bilibili') {
@@ -1329,7 +1484,7 @@ async function switchQuality(targetBr) {
     toast(`已保存默认音质偏好：${targetBr === 999 ? 'Hi-Res 无损母带' : targetBr + 'K'}`);
     return;
   }
-  if (track.source === 'youtube') {
+  if (track.source === 'youtube' && (!track._matchedSource || !track._matchedId)) {
     toast('YouTube 官方音源已自动输出最高可用码率');
     return;
   }
@@ -1338,8 +1493,14 @@ async function switchQuality(targetBr) {
   const curTime = audio.currentTime;
   const wasPaused = audio.paused;
   try {
-    const r = await resolveUrl(track.source, track.id, targetBr);
+    const targetSrc = (track.source === 'youtube' && track._matchedSource) ? track._matchedSource : track.source;
+    const targetId = (track.source === 'youtube' && track._matchedId) ? track._matchedId : track.id;
+    const r = await resolveUrl(targetSrc, targetId, targetBr);
     if (r && r.url) {
+      if (track.source === 'youtube') {
+        track._resolvedAudioUrl = r.url;
+        track._resolvedBr = r.br;
+      }
       track._cdnUrl = r.url;
       track._lastRes = r;
       if (!isIOS && isEqEnabled) {
@@ -1745,13 +1906,18 @@ $('track-menu').addEventListener('click', (e) => {
 async function downloadAudio(t) {
   toast(`正在准备下载《${t.name}》…`);
   try {
-    let r = await resolveUrl(t.source, t.id);
-    if (!r && t.source !== 'netease') {
-      const cleanName = cleanSongTitle(t.name);
-      const query = (cleanName + ' ' + (t.artist || []).join(' ')).trim();
-      const matched = await api({ types: 'search', source: 'netease', name: query, count: '3' });
-      if (Array.isArray(matched) && matched.length > 0) {
-        r = await resolveUrl('netease', matched[0].id);
+    let r = null;
+    if (t.source === 'youtube') {
+      r = await resolveYouTubeAudioAndLyrics(t);
+    } else {
+      r = await resolveUrl(t.source, t.id);
+      if (!r && t.source !== 'netease') {
+        const cleanName = cleanSongTitle(t.name);
+        const query = (cleanName + ' ' + (t.artist || []).join(' ')).trim();
+        const matched = await api({ types: 'search', source: 'netease', name: query, count: '3' });
+        if (Array.isArray(matched) && matched.length > 0) {
+          r = await resolveUrl('netease', matched[0].id);
+        }
       }
     }
     if (!r || !r.url) throw new Error('未获取到有效音频地址');
@@ -2233,28 +2399,21 @@ async function doSearch(isLoadMore = false) {
   const ytVid = matchYouTubeUrl(searchKeyword);
   if (ytVid && !isLoadMore) {
     try {
-      const proxy = proxyBase();
-      let info = null;
-      if (proxy) {
-        try { info = await fetchJson(proxy + '/yt-info?id=' + ytVid); } catch (e) {}
-      }
-      if (!info) {
-        info = {
-          id: `yt_${ytVid}`,
-          ytId: ytVid,
-          name: 'YouTube 单曲 (' + ytVid + ')',
-          artist: ['YouTube'],
-          album: 'YouTube',
-          pic: `https://i.ytimg.com/vi/${ytVid}/hqdefault.jpg`,
-          duration: 0,
-          source: 'youtube',
-          _needMatch: true,
-          _matchQuery: ytVid
-        };
-      }
+      const info = {
+        id: `yt_${ytVid}`,
+        ytId: ytVid,
+        youtubeId: ytVid,
+        name: 'YouTube 单曲 (' + ytVid + ')',
+        artist: ['YouTube'],
+        album: 'YouTube',
+        pic: `https://i.ytimg.com/vi/${ytVid}/hqdefault.jpg`,
+        duration: 0,
+        source: 'youtube'
+      };
+      await ensureYouTubeMeta(info);
       showListLoading(false);
       currentSearchTracks = [info];
-      renderTrackList(currentSearchTracks, `YouTube 解析结果`, `点击即可通过中转智能播放`);
+      renderTrackList(currentSearchTracks, `YouTube 解析结果`, `点击即可智能匹配高保真音源播放`);
       toast('已成功解析 YouTube 链接 🎵');
       return;
     } catch (e) {
